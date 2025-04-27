@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.mobilecomputer"
-    compileSdk = 35
+    compileSdk = 35 
 
     defaultConfig {
         applicationId = "com.example.mobilecomputer"
@@ -40,7 +40,6 @@ android {
 }
 
 dependencies {
-
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -49,6 +48,10 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    
+    // AppCompat 라이브러리 추가
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
