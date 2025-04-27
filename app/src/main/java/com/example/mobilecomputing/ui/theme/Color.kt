@@ -1,4 +1,4 @@
-package com.example.mobilecomputer.ui.theme
+package com.example.mobilecomputing.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

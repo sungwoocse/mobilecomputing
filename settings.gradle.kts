@@ -19,6 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "mobilecomputer"
+rootProject.name = "mobilecomputing"
+include(":app")
 include(":app")
  
