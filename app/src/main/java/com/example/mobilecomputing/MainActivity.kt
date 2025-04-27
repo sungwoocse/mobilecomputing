@@ -47,14 +47,14 @@ class MainActivity : AppCompatActivity() {
             setContentView(R.layout.activity_main)
 
             // 디버깅용 로그
-            android.util.Log.d("MainActivity", "onCreate 시작")
+            android.util.Log.d("MainActivity", "onCreate started")
 
             // 유틸리티 초기화
             wifiScanHelper = WifiScanHelper(this)
             wifiDataManager = WifiDataManager(this)
 
             // 디버깅용 로그
-            android.util.Log.d("MainActivity", "유틸리티 초기화 완료")
+            android.util.Log.d("MainActivity", "Utilities initialized")
 
             // 뷰 초기화
             mapImageView = findViewById(R.id.mapImageView)
@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
             coordinateTextView = findViewById(R.id.coordinateTextView)
 
             // 디버깅용 로그
-            android.util.Log.d("MainActivity", "뷰 초기화 완료")
+            android.util.Log.d("MainActivity", "Views initialized")
 
             // 버튼 초기 상태 설정
             updateButtonStates()
@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
                 if (selectedPoint != null) {
                     startWardrivingMode()
                 } else {
-                    Toast.makeText(this, "지도에서 위치를 선택해주세요", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Please select a location on the map", Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
                     selectedPoint = PointF(x, y)
 
                     // 좌표 표시
-                    coordinateTextView.text = "선택된 좌표: (${String.format("%.2f", x)}, ${String.format("%.2f", y)})"
+                    coordinateTextView.text = "Selected coordinates: (${String.format("%.2f", x)}, ${String.format("%.2f", y)})"
 
                     // 버튼 상태 업데이트
                     updateButtonStates()
@@ -128,14 +128,14 @@ class MainActivity : AppCompatActivity() {
             updateMapWithMarkers()
             
             // 디버깅용 로그
-            android.util.Log.d("MainActivity", "onCreate 완료")
+            android.util.Log.d("MainActivity", "onCreate completed")
         } catch (e: Exception) {
             // 오류 로그 출력
-            android.util.Log.e("MainActivity", "오류 발생: ${e.message}")
+            android.util.Log.e("MainActivity", "Error occurred: ${e.message}")
             e.printStackTrace()
             
             // 사용자에게 오류 메시지 표시
-            Toast.makeText(this, "앱 초기화 중 오류가 발생했습니다: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "An error occurred during app initialization: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
     
@@ -143,17 +143,17 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         
         if (requestCode == PERMISSION_REQUEST_CODE) {
-            android.util.Log.d("MainActivity", "권한 요청 결과 받음")
+            android.util.Log.d("MainActivity", "Permission request result received")
             
             val deniedPermissions = permissions.filterIndexed { index, _ -> 
                 grantResults[index] != PackageManager.PERMISSION_GRANTED 
             }
             
             if (deniedPermissions.isNotEmpty()) {
-                android.util.Log.w("MainActivity", "거부된 권한: ${deniedPermissions.joinToString()}")
-                Toast.makeText(this, "앱이 정상적으로 동작하려면 모든 권한이 필요합니다.", Toast.LENGTH_LONG).show()
+                android.util.Log.w("MainActivity", "Denied permissions: ${deniedPermissions.joinToString()}")
+                Toast.makeText(this, "All permissions are required for the app to work properly.", Toast.LENGTH_LONG).show()
             } else {
-                android.util.Log.d("MainActivity", "모든 권한 허용됨")
+                android.util.Log.d("MainActivity", "All permissions granted")
             }
         }
     }
@@ -168,7 +168,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestPermissions() {
         try {
-            android.util.Log.d("MainActivity", "권한 요청 시작")
+            android.util.Log.d("MainActivity", "Starting permission request")
             val permissions = arrayOf(
                 Manifest.permission.ACCESS_WIFI_STATE,
                 Manifest.permission.CHANGE_WIFI_STATE,
@@ -183,13 +183,13 @@ class MainActivity : AppCompatActivity() {
             }.toTypedArray()
             
             if (notGrantedPermissions.isNotEmpty()) {
-                android.util.Log.d("MainActivity", "권한 요청: ${notGrantedPermissions.joinToString()}")
+                android.util.Log.d("MainActivity", "Requesting permissions: ${notGrantedPermissions.joinToString()}")
                 ActivityCompat.requestPermissions(this, notGrantedPermissions, PERMISSION_REQUEST_CODE)
             } else {
-                android.util.Log.d("MainActivity", "모든 권한이 이미 허용됨")
+                android.util.Log.d("MainActivity", "All permissions already granted")
             }
         } catch (e: Exception) {
-            android.util.Log.e("MainActivity", "권한 요청 중 오류: ${e.message}")
+            android.util.Log.e("MainActivity", "Error during permission request: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -202,34 +202,34 @@ class MainActivity : AppCompatActivity() {
 
     private fun deleteMap() {
         AlertDialog.Builder(this)
-            .setTitle("지도 삭제")
-            .setMessage("지도를 삭제하시겠습니까?")
-            .setPositiveButton("예") { _, _ ->
+            .setTitle("Delete Map")
+            .setMessage("Are you sure you want to delete the map?")
+            .setPositiveButton("Yes") { _, _ ->
                 mapImageView.setImageDrawable(null)
                 currentMapBitmap = null
                 displayedBitmap = null
                 selectedPoint = null
                 coordinateTextView.text = ""
                 updateButtonStates()
-                Toast.makeText(this, "지도가 삭제되었습니다", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Map deleted", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("아니오", null)
+            .setNegativeButton("No", null)
             .show()
     }
 
     private fun startWardrivingMode() {
         // 워드라이빙 모드 다이얼로그
         AlertDialog.Builder(this)
-            .setTitle("WiFi 스캔")
-            .setMessage("스캔을 시작하시겠습니까?")
-            .setPositiveButton("예") { _, _ ->
+            .setTitle("WiFi Scan")
+            .setMessage("Start scanning?")
+            .setPositiveButton("Yes") { _, _ ->
                 // WiFi 스캔 시작
                 wifiScanHelper.scanWifi { scanResults ->
                     // 스캔 결과 표시
                     showScanResults(scanResults)
                 }
             }
-            .setNegativeButton("취소", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -238,13 +238,13 @@ class MainActivity : AppCompatActivity() {
         val message = wifiScanHelper.formatScanResults(scanResults).joinToString("\n")
 
         AlertDialog.Builder(this)
-            .setTitle("스캔된 AP")
+            .setTitle("Scanned APs")
             .setMessage(message)
-            .setPositiveButton("저장") { _, _ ->
+            .setPositiveButton("Save") { _, _ ->
                 // 데이터 저장
                 saveWifiData(scanResults)
             }
-            .setNegativeButton("취소", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -258,7 +258,7 @@ class MainActivity : AppCompatActivity() {
         wifiDataManager.saveWifiData(selectedPos, wifiInfoList)
 
         // 성공 메시지
-        Toast.makeText(this, "WiFi 데이터가 저장되었습니다", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "WiFi data saved", Toast.LENGTH_SHORT).show()
 
         // 지도에 마커 업데이트
         updateMapWithMarkers()
@@ -309,7 +309,7 @@ class MainActivity : AppCompatActivity() {
     private fun locatePosition(scanResults: List<ScanResult>) {
         val allData = wifiDataManager.getAllData()
         if (allData.isEmpty()) {
-            Toast.makeText(this, "저장된 WiFi 데이터가 없습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No saved WiFi data", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -336,12 +336,12 @@ class MainActivity : AppCompatActivity() {
         if (bestMatch != null) {
             // 위치 표시
             selectedPoint = bestMatch
-            coordinateTextView.text = "추정 위치: (${String.format("%.2f", bestMatch.x)}, ${String.format("%.2f", bestMatch.y)})"
+            coordinateTextView.text = "Estimated location: (${String.format("%.2f", bestMatch.x)}, ${String.format("%.2f", bestMatch.y)})"
             updateMapWithMarkers()
 
-            Toast.makeText(this, "위치 추정 완료", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Location estimation complete", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(this, "위치를 추정할 수 없습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Could not estimate location", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -349,7 +349,7 @@ class MainActivity : AppCompatActivity() {
         val csvData = wifiDataManager.exportAllDataToCsv()
 
         if (csvData.isEmpty()) {
-            Toast.makeText(this, "내보낼 데이터가 없습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No data to export", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -365,7 +365,7 @@ class MainActivity : AppCompatActivity() {
 
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(this, "데이터 내보내기 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -378,13 +378,13 @@ class MainActivity : AppCompatActivity() {
 
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/csv"
-            putExtra(Intent.EXTRA_SUBJECT, "WiFi 위치 데이터")
-            putExtra(Intent.EXTRA_TEXT, "수집된 WiFi 위치 데이터를 첨부합니다.")
+            putExtra(Intent.EXTRA_SUBJECT, "WiFi Location Data")
+            putExtra(Intent.EXTRA_TEXT, "Attached is the collected WiFi location data.")
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
-        startActivity(Intent.createChooser(intent, "이메일 전송하기"))
+        startActivity(Intent.createChooser(intent, "Send Email"))
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -401,7 +401,7 @@ class MainActivity : AppCompatActivity() {
                     updateMapWithMarkers()
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    Toast.makeText(this, "이미지 로드 실패", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
                 }
             }
         }

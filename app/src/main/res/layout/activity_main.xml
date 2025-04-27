@@ -10,7 +10,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="WiFi 기반 실내 위치 추적 앱"
+        android:text="WiFi-based Indoor Localization App"
         android:textSize="20sp"
         android:textStyle="bold"
         android:gravity="center"
@@ -26,14 +26,14 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="지도 업로드" />
+            android:text="Upload Map" />
 
         <Button
             android:id="@+id/deleteMapButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="지도 삭제"
+            android:text="Delete Map"
             android:enabled="false" />
     </LinearLayout>
 
@@ -47,7 +47,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="워드라이빙"
+            android:text="Wardriving"
             android:enabled="false" />
 
         <Button
@@ -55,7 +55,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="위치 추적"
+            android:text="Localization"
             android:enabled="false" />
     </LinearLayout>
 
@@ -63,7 +63,7 @@
         android:id="@+id/exportButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="데이터 내보내기"
+        android:text="Export Data"
         android:enabled="false" />
 
     <TextView
