@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
     private lateinit var mapImageView: ImageView
@@ -113,6 +114,9 @@ class MainActivity : AppCompatActivity() {
                     // 좌표 표시
                     coordinateTextView.text = "Selected coordinates: (${String.format("%.2f", x)}, ${String.format("%.2f", y)})"
 
+                    // 선택된 위치가 있는 경우 위치 관리 옵션 제공
+                    handleLocationSelection(PointF(x, y))
+
                     // 버튼 상태 업데이트
                     updateButtonStates()
 
@@ -137,6 +141,56 @@ class MainActivity : AppCompatActivity() {
             // 사용자에게 오류 메시지 표시
             Toast.makeText(this, "An error occurred during app initialization: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+    
+    // 위치 선택 시 이미 데이터가 있는 위치인지 확인하고 옵션 제공
+    private fun handleLocationSelection(point: PointF) {
+        val existingData = wifiDataManager.getDataAtPosition(point)
+        
+        if (existingData.isNotEmpty()) {
+            // 이미 데이터가 있는 위치인 경우 옵션 제공
+            AlertDialog.Builder(this)
+                .setTitle("What would like to do for this location?")
+                .setItems(arrayOf("Add new WiFi data", "Delete all data", "See the data", "Cancel")) { _, which ->
+                    when (which) {
+                        0 -> startWardrivingMode() // 새 데이터 추가
+                        1 -> {
+                            // 이 위치의 모든 데이터 삭제
+                            wifiDataManager.deleteDataAtPosition(point)
+                            Toast.makeText(this, "Data deleted for this location", Toast.LENGTH_SHORT).show()
+                            updateMapWithMarkers()
+                        }
+                        2 -> showLocationData(existingData) // 데이터 보기
+                        3 -> {} // 취소
+                    }
+                }
+                .show()
+        }
+    }
+    
+    // 특정 위치의 저장된 WiFi 데이터 표시
+    private fun showLocationData(locationData: List<WifiLocationData>) {
+        if (locationData.isEmpty()) return
+        
+        val sb = StringBuilder()
+        for (data in locationData) {
+            sb.appendLine("Position: (${String.format("%.2f", data.position.x)}, ${String.format("%.2f", data.position.y)})")
+            sb.appendLine("Time: ${data.getFormattedDate()}")
+            sb.appendLine("APs detected: ${data.wifiList.size}")
+            sb.appendLine("--------------------------")
+            
+            for (wifi in data.wifiList) {
+                sb.appendLine("${wifi.ssid}; ${wifi.bssid}; ${wifi.capabilities}; ${wifi.frequency} MHz; ${wifi.level} dBm")
+            }
+            sb.appendLine("\n")
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Saved APs")
+            .setMessage(sb.toString())
+            .setPositiveButton("Yes") { _, _ -> }
+            .setNeutralButton("Would you like to go back?", null)
+            .show()
     }
     
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -221,7 +275,7 @@ class MainActivity : AppCompatActivity() {
         // 워드라이빙 모드 다이얼로그
         AlertDialog.Builder(this)
             .setTitle("WiFi Scan")
-            .setMessage("Start scanning?")
+            .setMessage("Would like to scan?")
             .setPositiveButton("Yes") { _, _ ->
                 // WiFi 스캔 시작
                 wifiScanHelper.scanWifi { scanResults ->
@@ -235,7 +289,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun showScanResults(scanResults: List<ScanResult>) {
         // 스캔 결과 표시 및 저장 여부 확인
-        val message = wifiScanHelper.formatScanResults(scanResults).joinToString("\n")
+        val formattedResults = wifiScanHelper.formatScanResults(scanResults)
+        
+        // 신호 강도에 따라 정렬
+        val sortedResults = formattedResults.sortedByDescending { result ->
+            val levelStr = result.substringAfterLast("; ").substringBefore(" dBm")
+            levelStr.toIntOrNull() ?: -100
+        }
+        
+        val message = sortedResults.joinToString("\n")
 
         AlertDialog.Builder(this)
             .setTitle("Scanned APs")
@@ -244,7 +306,7 @@ class MainActivity : AppCompatActivity() {
                 // 데이터 저장
                 saveWifiData(scanResults)
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("No", null)
             .show()
     }
 
@@ -300,48 +362,47 @@ class MainActivity : AppCompatActivity() {
 
     private fun startLocalizationMode() {
         // 실시간 위치추적 모드 시작
+        Toast.makeText(this, "Scanning WiFi networks for location...", Toast.LENGTH_SHORT).show()
+        
         wifiScanHelper.scanWifi { scanResults ->
             locatePosition(scanResults)
         }
     }
 
-    // 간단한 위치 추정 알고리즘 구현
+    // 개선된 위치 추정 알고리즘 구현
     private fun locatePosition(scanResults: List<ScanResult>) {
-        val allData = wifiDataManager.getAllData()
-        if (allData.isEmpty()) {
-            Toast.makeText(this, "No saved WiFi data", Toast.LENGTH_SHORT).show()
+        if (scanResults.isEmpty()) {
+            Toast.makeText(this, "No WiFi networks detected", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // 현재 스캔된 WiFi 정보
+        // ScanResult -> WifiInfo 변환
         val currentWifiInfos = scanResults.map { WifiInfo.fromScanResult(it) }
-        val currentBssids = currentWifiInfos.map { it.bssid }
-
-        var bestMatch: PointF? = null
-        var bestScore = Int.MIN_VALUE
-
-        // 모든 저장된 위치와 비교
-        for (locationData in allData) {
-            val savedBssids = locationData.wifiList.map { it.bssid }
-
-            // 공통으로 감지된 AP 수 계산 (간단한 유사도 측정)
-            val commonAPs = currentBssids.intersect(savedBssids.toSet()).size
-
-            if (commonAPs > bestScore) {
-                bestScore = commonAPs
-                bestMatch = locationData.position
-            }
-        }
-
-        if (bestMatch != null) {
+        
+        // 위치 추정
+        val estimationResult = wifiDataManager.estimateLocation(currentWifiInfos)
+        
+        if (estimationResult != null) {
             // 위치 표시
-            selectedPoint = bestMatch
-            coordinateTextView.text = "Estimated location: (${String.format("%.2f", bestMatch.x)}, ${String.format("%.2f", bestMatch.y)})"
+            selectedPoint = estimationResult.position
+            
+            // 신뢰도에 따른 메시지 생성
+            val confidencePercent = (estimationResult.confidence * 100).roundToInt()
+            val confidenceMessage = when {
+                confidencePercent > 80 -> "High confidence"
+                confidencePercent > 50 -> "Medium confidence"
+                else -> "Low confidence"
+            }
+            
+            // 좌표 및 신뢰도 표시
+            coordinateTextView.text = "(${String.format("%.2f", estimationResult.position.x)}, " +
+                    "${String.format("%.2f", estimationResult.position.y)}) - $confidenceMessage"
+            
             updateMapWithMarkers()
 
-            Toast.makeText(this, "Location estimation complete", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Location estimated with $confidencePercent% confidence", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(this, "Could not estimate location", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Could not estimate location. Try collecting more data.", Toast.LENGTH_SHORT).show()
         }
     }
 
