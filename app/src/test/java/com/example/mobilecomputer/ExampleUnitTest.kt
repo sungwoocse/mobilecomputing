@@ -1,4 +1,4 @@
-package com.example.mobilecomputing
+package com.example.mobilecomputer
 
 import org.junit.Test
 
