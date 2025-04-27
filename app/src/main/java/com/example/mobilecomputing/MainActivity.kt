@@ -42,80 +42,120 @@ class MainActivity : AppCompatActivity() {
     private val IMAGE_PICK_CODE = 1000
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        try {
+            super.onCreate(savedInstanceState)
+            setContentView(R.layout.activity_main)
 
-        // 유틸리티 초기화
-        wifiScanHelper = WifiScanHelper(this)
-        wifiDataManager = WifiDataManager(this)
+            // 디버깅용 로그
+            android.util.Log.d("MainActivity", "onCreate 시작")
 
-        // 뷰 초기화
-        mapImageView = findViewById(R.id.mapImageView)
-        uploadMapButton = findViewById(R.id.uploadMapButton)
-        deleteMapButton = findViewById(R.id.deleteMapButton)
-        wardrivingButton = findViewById(R.id.wardrivingButton)
-        localizationButton = findViewById(R.id.localizationButton)
-        exportButton = findViewById(R.id.exportButton)
-        coordinateTextView = findViewById(R.id.coordinateTextView)
+            // 유틸리티 초기화
+            wifiScanHelper = WifiScanHelper(this)
+            wifiDataManager = WifiDataManager(this)
 
-        // 버튼 초기 상태 설정
-        updateButtonStates()
+            // 디버깅용 로그
+            android.util.Log.d("MainActivity", "유틸리티 초기화 완료")
 
-        // 권한 요청
-        requestPermissions()
+            // 뷰 초기화
+            mapImageView = findViewById(R.id.mapImageView)
+            uploadMapButton = findViewById(R.id.uploadMapButton)
+            deleteMapButton = findViewById(R.id.deleteMapButton)
+            wardrivingButton = findViewById(R.id.wardrivingButton)
+            localizationButton = findViewById(R.id.localizationButton)
+            exportButton = findViewById(R.id.exportButton)
+            coordinateTextView = findViewById(R.id.coordinateTextView)
 
-        // 지도 업로드 버튼
-        uploadMapButton.setOnClickListener {
-            openGallery()
+            // 디버깅용 로그
+            android.util.Log.d("MainActivity", "뷰 초기화 완료")
+
+            // 버튼 초기 상태 설정
+            updateButtonStates()
+
+            // 권한 요청
+            requestPermissions()
+
+            // 지도 업로드 버튼
+            uploadMapButton.setOnClickListener {
+                openGallery()
+            }
+
+            // 지도 삭제 버튼
+            deleteMapButton.setOnClickListener {
+                deleteMap()
+            }
+
+            // 워드라이빙 버튼
+            wardrivingButton.setOnClickListener {
+                if (selectedPoint != null) {
+                    startWardrivingMode()
+                } else {
+                    Toast.makeText(this, "지도에서 위치를 선택해주세요", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            // 위치 추적 버튼
+            localizationButton.setOnClickListener {
+                startLocalizationMode()
+            }
+
+            // 데이터 내보내기 버튼
+            exportButton.setOnClickListener {
+                exportData()
+            }
+
+            // 지도 클릭 이벤트 처리
+            mapImageView.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN && currentMapBitmap != null) {
+                    val x = event.x / mapImageView.width
+                    val y = event.y / mapImageView.height
+                    selectedPoint = PointF(x, y)
+
+                    // 좌표 표시
+                    coordinateTextView.text = "선택된 좌표: (${String.format("%.2f", x)}, ${String.format("%.2f", y)})"
+
+                    // 버튼 상태 업데이트
+                    updateButtonStates()
+
+                    // 선택된 지점 표시
+                    updateMapWithMarkers()
+
+                    return@setOnTouchListener true
+                }
+                false
+            }
+
+            // 저장된 위치 데이터 표시
+            updateMapWithMarkers()
+            
+            // 디버깅용 로그
+            android.util.Log.d("MainActivity", "onCreate 완료")
+        } catch (e: Exception) {
+            // 오류 로그 출력
+            android.util.Log.e("MainActivity", "오류 발생: ${e.message}")
+            e.printStackTrace()
+            
+            // 사용자에게 오류 메시지 표시
+            Toast.makeText(this, "앱 초기화 중 오류가 발생했습니다: ${e.message}", Toast.LENGTH_LONG).show()
         }
-
-        // 지도 삭제 버튼
-        deleteMapButton.setOnClickListener {
-            deleteMap()
-        }
-
-        // 워드라이빙 버튼
-        wardrivingButton.setOnClickListener {
-            if (selectedPoint != null) {
-                startWardrivingMode()
+    }
+    
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            android.util.Log.d("MainActivity", "권한 요청 결과 받음")
+            
+            val deniedPermissions = permissions.filterIndexed { index, _ -> 
+                grantResults[index] != PackageManager.PERMISSION_GRANTED 
+            }
+            
+            if (deniedPermissions.isNotEmpty()) {
+                android.util.Log.w("MainActivity", "거부된 권한: ${deniedPermissions.joinToString()}")
+                Toast.makeText(this, "앱이 정상적으로 동작하려면 모든 권한이 필요합니다.", Toast.LENGTH_LONG).show()
             } else {
-                Toast.makeText(this, "지도에서 위치를 선택해주세요", Toast.LENGTH_SHORT).show()
+                android.util.Log.d("MainActivity", "모든 권한 허용됨")
             }
         }
-
-        // 위치 추적 버튼
-        localizationButton.setOnClickListener {
-            startLocalizationMode()
-        }
-
-        // 데이터 내보내기 버튼
-        exportButton.setOnClickListener {
-            exportData()
-        }
-
-        // 지도 클릭 이벤트 처리
-        mapImageView.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN && currentMapBitmap != null) {
-                val x = event.x / mapImageView.width
-                val y = event.y / mapImageView.height
-                selectedPoint = PointF(x, y)
-
-                // 좌표 표시
-                coordinateTextView.text = "선택된 좌표: (${String.format("%.2f", x)}, ${String.format("%.2f", y)})"
-
-                // 버튼 상태 업데이트
-                updateButtonStates()
-
-                // 선택된 지점 표시
-                updateMapWithMarkers()
-
-                return@setOnTouchListener true
-            }
-            false
-        }
-
-        // 저장된 위치 데이터 표시
-        updateMapWithMarkers()
     }
 
     private fun updateButtonStates() {
@@ -127,16 +167,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestPermissions() {
-        val permissions = arrayOf(
-            Manifest.permission.ACCESS_WIFI_STATE,
-            Manifest.permission.CHANGE_WIFI_STATE,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.INTERNET
-        )
-
-        ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE)
+        try {
+            android.util.Log.d("MainActivity", "권한 요청 시작")
+            val permissions = arrayOf(
+                Manifest.permission.ACCESS_WIFI_STATE,
+                Manifest.permission.CHANGE_WIFI_STATE,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.INTERNET
+            )
+                
+            val notGrantedPermissions = permissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }.toTypedArray()
+            
+            if (notGrantedPermissions.isNotEmpty()) {
+                android.util.Log.d("MainActivity", "권한 요청: ${notGrantedPermissions.joinToString()}")
+                ActivityCompat.requestPermissions(this, notGrantedPermissions, PERMISSION_REQUEST_CODE)
+            } else {
+                android.util.Log.d("MainActivity", "모든 권한이 이미 허용됨")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "권한 요청 중 오류: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
     private fun openGallery() {
