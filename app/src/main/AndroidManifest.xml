@@ -2,16 +2,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 기존 권한들 -->
+    <!-- WiFi 관련 권한 -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
+    <!-- 위치 관련 권한 (WiFi 스캔에 필수) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- 저장소 관련 권한 (맵 이미지 로드) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+
+    <!-- 인터넷 권한 (이메일 전송) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
