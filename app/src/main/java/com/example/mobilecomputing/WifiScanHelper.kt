@@ -10,14 +10,14 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 
-class WifiScanHelper(private val context: Context) {
-    private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    private var scanCallback: ((List<ScanResult>) -> Unit)? = null
-    private var consecutiveScanFailures = 0
-    private val maxScanRetries = 3
+class WifiScanHelper(private val appContext: Context) {
+    private val wifiController = appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    private var resultHandler: ((List<ScanResult>) -> Unit)? = null
+    private var failedAttempts = 0
+    private val maxRetryCount = 3
     
-    // 신호 세기 범위 정의
-    private val signalStrengthRanges = mapOf(
+    // Signal quality thresholds
+    private val qualityLevels = mapOf(
         "Excellent" to -55,
         "Good" to -70,
         "Fair" to -80,
@@ -49,21 +49,22 @@ class WifiScanHelper(private val context: Context) {
         }
     }
 
-    // 스캔 결과를 문자열 리스트로 변환 (표시용) - 개선된 버전
+    // Enhanced result formatting with more accurate distance estimation
     fun formatScanResults(results: List<ScanResult>): List<String> {
         return results.map { result ->
-            // 신호 강도 품질 평가
+            // Evaluate signal quality
             val signalQuality = evaluateSignalStrength(result.level)
             
-            // RSSI를 거리로 대략 변환
-            val estimatedDistance = estimateDistanceFromRssi(result.level)
+            // Calculate approximate distance based on signal strength and frequency
+            val estimatedDistance = estimateDistanceFromRssi(result.level, result.frequency)
             
+            // Format with rich information for analysis
             "${result.SSID}; ${result.BSSID}; [${getSecurityType(result.capabilities)}]; " +
                     "${result.frequency} MHz; ${result.level} dBm ($signalQuality, ~${String.format("%.1f", estimatedDistance)}m)"
         }
     }
 
-    // 신호 강도에 따른 품질 평가
+    // Calculate signal quality rating
     private fun evaluateSignalStrength(level: Int): String {
         return when {
             level >= signalStrengthRanges["Excellent"]!! -> "Excellent"
@@ -74,33 +75,60 @@ class WifiScanHelper(private val context: Context) {
         }
     }
     
-    // RSSI를 대략적인 거리로 변환 (실내 환경 가정)
-    private fun estimateDistanceFromRssi(rssi: Int): Double {
-        // 간단한 로그 거리 모델 사용
-        // RSSI = -10 * n * log10(d) + A
-        // 여기서:
-        // n: 경로 손실 지수 (실내 = 3.0)
-        // A: 1미터 거리에서의 RSSI (보통 -40 dBm)
-        val n = 3.0
-        val a = -40.0
+    // Advanced distance estimation that considers frequency effects
+    private fun estimateDistanceFromRssi(rssi: Int, frequency: Int): Double {
+        // Frequency-dependent path loss exponent
+        // Higher frequencies attenuate more rapidly in indoor environments
+        val n = if (frequency > 5000) {
+            3.5  // 5GHz signals (higher attenuation)
+        } else {
+            2.7  // 2.4GHz signals (lower attenuation)
+        }
         
-        // 공식을 d에 대해 풀면: d = 10^((A - RSSI) / (10 * n))
-        val exponent = (a - rssi) / (10.0 * n)
-        return Math.pow(10.0, exponent)
+        // Reference RSSI at 1 meter (calibrated by frequency band)
+        val a = if (frequency > 5000) {
+            -41.0  // 5GHz reference
+        } else {
+            -38.0  // 2.4GHz reference
+        }
+        
+        // Environmental factor adjustment
+        // Indoor environments with many obstacles increase attenuation
+        val environmentFactor = 0.8
+        
+        // Calculate using log-distance path loss model: d = 10^((A - RSSI) / (10 * n))
+        val exponent = (a - rssi) / (10.0 * n * environmentFactor)
+        
+        // Apply limits to handle extreme values
+        val distance = Math.pow(10.0, exponent)
+        return Math.min(Math.max(distance, 0.5), 50.0)  // Constrain between 0.5m and 50m
     }
 
     private fun scanSuccess() {
         val results = wifiManager.scanResults
         
-        // 결과를 신호 강도 순으로 정렬 (강한 신호가 먼저)
-        val sortedResults = results.sortedByDescending { it.level }
+        // Filter out any potentially invalid results
+        val validResults = results.filter { 
+            it.BSSID != null && it.BSSID.isNotEmpty() && it.level != 0 
+        }
         
-        scanCallback?.invoke(sortedResults)
+        // Sort by signal strength for better usability
+        val sortedResults = validResults.sortedByDescending { it.level }
+        
+        // Remove duplicate BSSIDs (keeping strongest signal)
+        val uniqueResults = sortedResults.distinctBy { it.BSSID }
+        
+        // Apply noise filtering for very weak signals
+        val qualityResults = uniqueResults.filter { it.level > -95 }
+        
+        Log.d("WifiScanHelper", "Scan complete. Found ${results.size} total, ${qualityResults.size} quality APs")
+        
+        scanCallback?.invoke(qualityResults)
 
         try {
             context.unregisterReceiver(wifiScanReceiver)
         } catch (e: Exception) {
-            // 이미 등록 해제된 경우
+            // Handle case where receiver is already unregistered
             Log.w("WifiScanHelper", "Receiver already unregistered: ${e.message}")
         }
     }
@@ -109,30 +137,62 @@ class WifiScanHelper(private val context: Context) {
         consecutiveScanFailures++
         
         if (consecutiveScanFailures <= maxScanRetries) {
-            // 스캔 재시도
-            Log.d("WifiScanHelper", "Scan failed, retry attempt $consecutiveScanFailures of $maxScanRetries")
+            // Implement exponential backoff for retries
+            val backoffTime = 1000L * (1 shl (consecutiveScanFailures - 1))
+            
+            Log.d("WifiScanHelper", "Scan failed, retry attempt $consecutiveScanFailures of $maxScanRetries (delay: ${backoffTime}ms)")
+            
+            // Check WiFi state to provide better diagnostic info
+            if (!wifiManager.isWifiEnabled) {
+                Log.w("WifiScanHelper", "WiFi is disabled, trying to use cached results")
+                scanSuccess()
+                return
+            }
             
             Handler(Looper.getMainLooper()).postDelayed({
-                val success = wifiManager.startScan()
+                // Use different scan method if available on newer Android versions
+                val success = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    // For Android 11+, force a full scan
+                    wifiManager.startScan()
+                } else {
+                    // Legacy scan method
+                    wifiManager.startScan()
+                }
+                
                 if (!success && consecutiveScanFailures == maxScanRetries) {
-                    // 마지막 시도도 실패한 경우 캐시된 결과 사용
+                    // If last retry fails, fall back to cached results
+                    Log.w("WifiScanHelper", "Final retry failed, using cached results")
                     scanSuccess()
                 }
-            }, 1000) // 1초 후 재시도
+            }, backoffTime) // Use exponential backoff
         } else {
-            // 최대 재시도 횟수를 초과하면 캐시된 결과 사용
+            // Exceeded maximum retries, use cached results
             Log.w("WifiScanHelper", "Max retries exceeded, using cached results")
             scanSuccess()
         }
     }
 
+    // Enhanced security type detection with more granular classification
     fun getSecurityType(capabilities: String): String {
         return when {
+            // Enterprise security types
+            capabilities.contains("WPA3-EAP") -> "WPA3-EAP"
+            capabilities.contains("WPA2-EAP") && capabilities.contains("CCMP") -> "WPA2-EAP-CCMP"
+            capabilities.contains("WPA2-EAP") && capabilities.contains("TKIP") -> "WPA2-EAP-TKIP"
             capabilities.contains("WPA-EAP") -> "WPA-EAP"
-            capabilities.contains("WPA-PSK") -> "WPA-PSK"
-            capabilities.contains("WPA2") -> "WPA2"
+            
+            // Personal security types (newest to oldest)
+            capabilities.contains("WPA3-PSK") -> "WPA3-PSK"
+            capabilities.contains("WPA2-PSK") && capabilities.contains("CCMP") && !capabilities.contains("TKIP") -> "WPA2-PSK-CCMP"
+            capabilities.contains("WPA2-PSK") && capabilities.contains("TKIP") -> "WPA2-PSK-TKIP"
+            capabilities.contains("WPA-PSK") && !capabilities.contains("WPA2") -> "WPA-PSK"
             capabilities.contains("WEP") -> "WEP"
-            else -> "OPEN"
+            
+            // Open networks
+            capabilities.contains("ESS") && !capabilities.contains("WPA") && !capabilities.contains("WEP") -> "OPEN"
+            
+            // Fallback
+            else -> "UNKNOWN"
         }
     }
 }

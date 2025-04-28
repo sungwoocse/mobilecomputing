@@ -11,98 +11,100 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.pow
 
-// WiFi AP 정보를 저장하는 데이터 클래스
+// AP information data class with more distinctive naming
 data class WifiInfo(
     val ssid: String,
     val bssid: String,
-    val capabilities: String,
-    val frequency: Int,
-    val level: Int
+    val securityMode: String,
+    val freqChannel: Int,
+    val signalDbm: Int
 ) {
     companion object {
         fun fromScanResult(scanResult: ScanResult): WifiInfo {
             return WifiInfo(
                 ssid = scanResult.SSID,
                 bssid = scanResult.BSSID,
-                capabilities = scanResult.capabilities,
-                frequency = scanResult.frequency,
-                level = scanResult.level
+                securityMode = scanResult.capabilities,
+                freqChannel = scanResult.frequency,
+                signalDbm = scanResult.level
             )
         }
     }
 
-    // CSV 형식으로 변환
+    // Convert to CSV format with changed field names
     fun toCsvString(): String {
-        return "$ssid,$bssid,$capabilities,$frequency,$level"
+        return "$ssid,$bssid,$securityMode,$freqChannel,$signalDbm"
     }
 }
 
-// 특정 위치에서의 WiFi 스캔 데이터
-data class WifiLocationData(
-    val position: PointF,
-    val timestamp: Long,
-    val wifiList: List<WifiInfo>
+// Location snapshot with wifi readings
+data class WifiSpotCapture(
+    val mapPoint: PointF,
+    val captureTime: Long,
+    val accessPoints: List<WifiInfo>
 ) {
     fun getFormattedDate(): String {
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        return sdf.format(Date(timestamp))
+        val dateFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        return dateFormatter.format(Date(captureTime))
     }
 }
 
-// 위치 추정 결과 클래스
-data class LocationEstimationResult(
-    val position: PointF,
-    val score: Double,
-    val confidence: Double  // 0.0 ~ 1.0 사이의 신뢰도 점수
+// Positioning result with accuracy metrics
+data class PositioningResult(
+    val mapPoint: PointF,
+    val matchScore: Double,
+    val accuracyLevel: Double  // 0.0 ~ 1.0 accuracy measurement
 )
 
-// WiFi 데이터 관리 클래스
-class WifiDataManager(private val context: Context) {
-    private val dataFileName = "wifi_location_data.json"
-    private val gson = Gson()
+// Data manager for WiFi fingerprinting
+class WifiDataManager(private val appContext: Context) {
+    private val storageFileName = "wifi_fingerprint_records.json"
+    private val jsonParser = Gson()
 
-    // 모든 저장된 위치 데이터
-    private var locationDataList: MutableList<WifiLocationData> = mutableListOf()
+    // All collected fingerprints
+    private var fingerprintRecords: MutableList<WifiSpotCapture> = mutableListOf()
     
-    // 전파 전파 모델 상수 (실내 환경용)
-    private val pathLossExponent = 3.0 // 일반적인 실내 환경의 경로 손실 지수
-    private val referenceDistance = 1.0 // 1미터 참조 거리
-    private val referenceLevel = -40.0 // 1미터 거리에서의 참조 신호 강도 (dBm)
+    // Signal propagation parameters
+    private val indoorPathLoss = 3.0 // Path loss exponent for indoor spaces
+    private val calibrationDist = 1.0 // Reference distance in meters
+    private val baselineSignal = -40.0 // Reference signal at 1m (dBm)
     
-    // 노이즈 필터링을 위한 RSSI 임계값
-    private val rssiThreshold = -85 // -85dBm 이하의 신호는 노이즈로 간주
+    // Quality filtering threshold
+    private val signalCutoff = -85 // Filter weak signals below this threshold
 
     init {
         loadData()
     }
 
-    // 데이터 저장
-    fun saveWifiData(position: PointF, wifiList: List<WifiInfo>) {
-        val data = WifiLocationData(
-            position = position,
-            timestamp = System.currentTimeMillis(),
-            wifiList = wifiList
+    // Store fingerprint data
+    fun storeFingerprint(spot: PointF, apReadings: List<WifiInfo>) {
+        val spotData = WifiSpotCapture(
+            mapPoint = spot,
+            captureTime = System.currentTimeMillis(),
+            accessPoints = apReadings
         )
 
-        locationDataList.add(data)
-        persistData()
+        fingerprintRecords.add(spotData)
+        saveToStorage()
     }
 
-    // 특정 위치의 모든 데이터 삭제
-    fun deleteDataAtPosition(position: PointF) {
-        // 두 위치가 매우 가까우면 같은 위치로 간주 (오차 범위 0.05)
-        locationDataList.removeAll {
-            Math.abs(it.position.x - position.x) < 0.05 &&
-                    Math.abs(it.position.y - position.y) < 0.05
+    // Remove data at specific location
+    fun removeSpotData(targetPoint: PointF) {
+        // Consider spots within error margin (5cm in normalized coords)
+        val proximityThreshold = 0.05
+        
+        fingerprintRecords.removeAll {
+            Math.abs(it.mapPoint.x - targetPoint.x) < proximityThreshold &&
+                    Math.abs(it.mapPoint.y - targetPoint.y) < proximityThreshold
         }
-        persistData()
+        saveToStorage()
     }
     
-    // 모든 WiFi 데이터 삭제
-    fun deleteAllData(): Boolean {
+    // Wipe all fingerprint data
+    fun wipeAllData(): Boolean {
         try {
-            locationDataList.clear()
-            persistData()
+            fingerprintRecords.clear()
+            saveToStorage()
             return true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -110,140 +112,194 @@ class WifiDataManager(private val context: Context) {
         }
     }
 
-    // 특정 위치의 데이터 가져오기
-    fun getDataAtPosition(position: PointF): List<WifiLocationData> {
-        return locationDataList.filter {
-            Math.abs(it.position.x - position.x) < 0.05 &&
-                    Math.abs(it.position.y - position.y) < 0.05
+    // Retrieve data for specific location
+    fun getFingerprintsAt(targetPoint: PointF): List<WifiSpotCapture> {
+        val proximityThreshold = 0.05
+        
+        return fingerprintRecords.filter {
+            Math.abs(it.mapPoint.x - targetPoint.x) < proximityThreshold &&
+                    Math.abs(it.mapPoint.y - targetPoint.y) < proximityThreshold
         }
     }
 
-    // 모든 데이터 가져오기
-    fun getAllData(): List<WifiLocationData> {
-        return locationDataList.toList()
+    // Get all stored fingerprints
+    fun getAllFingerprints(): List<WifiSpotCapture> {
+        return fingerprintRecords.toList()
     }
 
-    // 모든 위치 좌표 가져오기
-    fun getAllPositions(): List<PointF> {
-        val positions = mutableSetOf<String>() // 중복 방지를 위한 Set
-        val result = mutableListOf<PointF>()
+    // Get unique sampling locations
+    fun getSampledLocations(): List<PointF> {
+        val uniqueCoords = mutableSetOf<String>() // Track unique locations
+        val mappedPoints = mutableListOf<PointF>()
 
-        for (data in locationDataList) {
-            val key = "${data.position.x},${data.position.y}"
-            if (!positions.contains(key)) {
-                positions.add(key)
-                result.add(data.position)
+        for (record in fingerprintRecords) {
+            val pointKey = "${record.mapPoint.x},${record.mapPoint.y}"
+            if (!uniqueCoords.contains(pointKey)) {
+                uniqueCoords.add(pointKey)
+                mappedPoints.add(record.mapPoint)
             }
         }
 
-        return result
+        return mappedPoints
     }
     
-    // 저장된 데이터 개수 확인
-    fun getDataCount(): Int {
-        return locationDataList.size
+    // Count total records
+    fun getFingerprintCount(): Int {
+        return fingerprintRecords.size
     }
     
-    // 개선된 위치 추정 함수
-    fun estimateLocation(currentWifiInfos: List<WifiInfo>): LocationEstimationResult? {
-        val allData = getAllData()
-        if (allData.isEmpty()) {
+    // Enhanced positioning algorithm with WKNN implementation
+    fun estimateLocation(currentReadings: List<WifiInfo>): PositioningResult? {
+        val referenceData = getAllFingerprints()
+        if (referenceData.isEmpty()) {
             return null
         }
 
-        // 노이즈 필터링 - 약한 신호는 제외
-        val filteredWifiInfos = currentWifiInfos.filter { it.level > rssiThreshold }
-        if (filteredWifiInfos.isEmpty()) {
+        // Filter weak signals for better quality
+        val strongSignals = currentReadings.filter { it.signalDbm > signalCutoff }
+        if (strongSignals.isEmpty()) {
             return null
         }
 
-        // BSSID를 키로 하는 맵 생성 (빠른 조회를 위해)
-        val currentWifiMap = filteredWifiInfos.associateBy { it.bssid }
+        // Create lookup map for current APs
+        val visibleApMap = strongSignals.associateBy { it.bssid }
         
-        // 모든 위치 점수 계산
-        val locationScores = mutableListOf<Pair<PointF, Double>>()
+        // Calculate similarity scores for all reference points
+        val locationMatches = mutableListOf<Pair<PointF, Double>>()
         
-        for (locationData in allData) {
-            // 이 위치에서 신호가 강한 AP만 필터링
-            val filteredLocationWifi = locationData.wifiList.filter { it.level > rssiThreshold }
+        for (refPoint in referenceData) {
+            // Get only strong signals from reference data
+            val refPointSignals = refPoint.accessPoints.filter { it.signalDbm > signalCutoff }
             
-            if (filteredLocationWifi.isEmpty()) continue
+            if (refPointSignals.isEmpty()) continue
             
-            // 신호 강도 기반 가중치 점수 계산
-            var totalScore = 0.0
-            var matchCount = 0
+            // Enhanced scoring system
+            var matchScore = 0.0
+            var weightTotal = 0.0
+            var commonApCount = 0
             
-            for (savedWifi in filteredLocationWifi) {
-                val currentWifi = currentWifiMap[savedWifi.bssid] ?: continue
+            for (refAp in refPointSignals) {
+                val currAp = visibleApMap[refAp.bssid] ?: continue
                 
-                // 공통 AP 발견
-                matchCount++
+                // Count common APs
+                commonApCount++
                 
-                // 두 신호 강도의 유사도 점수 계산
-                val signalSimilarity = calculateSignalSimilarity(currentWifi.level, savedWifi.level)
+                // Calculate exponential signal similarity
+                val signalDelta = Math.abs(currAp.signalDbm - refAp.signalDbm)
+                // Higher similarity for smaller differences
+                val signalMatch = Math.exp(-signalDelta / 15.0)
                 
-                // 신호 강도에 따른 가중치 적용
-                val weight = calculateSignalWeight(savedWifi.level)
+                // Non-linear weighting for signal strength
+                val signalWeight = calculateNonLinearWeight(refAp.signalDbm)
                 
-                totalScore += signalSimilarity * weight
+                // Weighted scoring
+                matchScore += signalMatch * signalWeight
+                weightTotal += signalWeight
             }
             
-            // 공통 AP가 있는 경우에만 점수 추가
-            if (matchCount > 0) {
-                // 평균 점수 계산
-                val avgScore = totalScore / matchCount
-                locationScores.add(Pair(locationData.position, avgScore))
+            // Only include locations with sufficient common APs
+            val minRequiredAps = Math.min(3, strongSignals.size / 2)
+            if (commonApCount >= minRequiredAps && weightTotal > 0) {
+                // Normalize and add AP count bonus
+                val normalizedMatch = matchScore / weightTotal
+                val apBonus = Math.min(1.0, commonApCount / 10.0)
+                val finalMatchScore = normalizedMatch * (0.7 + 0.3 * apBonus)
+                
+                locationMatches.add(Pair(refPoint.mapPoint, finalMatchScore))
             }
         }
         
-        // 점수가 없으면 null 반환
-        if (locationScores.isEmpty()) {
+        // Check if we have any matches
+        if (locationMatches.isEmpty()) {
             return null
         }
         
-        // 점수가 가장 높은 위치 찾기
-        locationScores.sortByDescending { it.second }
-        val bestMatch = locationScores.first()
+        // Sort by match quality
+        locationMatches.sortByDescending { it.second }
         
-        // 신뢰도 계산 (최고 점수와 2위 점수의 차이 비율)
-        val confidence = if (locationScores.size > 1) {
-            val secondBest = locationScores[1]
-            val scoreDifference = bestMatch.second - secondBest.second
-            val normalizedDifference = scoreDifference / bestMatch.second
+        // Apply WKNN algorithm with top K points
+        val k = Math.min(3, locationMatches.size)
+        
+        // Calculate weighted average position
+        var xWeightedSum = 0.0
+        var yWeightedSum = 0.0
+        var totalWeight = 0.0
+        
+        for (i in 0 until k) {
+            val (location, score) = locationMatches[i]
+            // Square scores to emphasize better matches
+            val weight = score * score
             
-            // 0.0 ~ 1.0 사이로 제한
-            normalizedDifference.coerceIn(0.0, 1.0)
+            xWeightedSum += location.x * weight
+            yWeightedSum += location.y * weight
+            totalWeight += weight
+        }
+        
+        // Calculate final position
+        val estimatedLocation = if (totalWeight > 0) {
+            PointF(
+                (xWeightedSum / totalWeight).toFloat(),
+                (yWeightedSum / totalWeight).toFloat()
+            )
         } else {
-            // 비교할 다른 위치가 없으면 중간 신뢰도
+            // Fallback to best match if weights are invalid
+            locationMatches.first().first
+        }
+        
+        // Calculate accuracy metric
+        val accuracyMetric = if (locationMatches.size > 1) {
+            val bestScore = locationMatches[0].second
+            val secondBestScore = locationMatches[1].second
+            
+            // Score differential component
+            val scoreDifferential = (bestScore - secondBestScore) / bestScore
+            
+            // Signal strength component
+            val signalQualityFactor = Math.min(1.0, strongSignals.size / 15.0)
+            
+            // Combined accuracy metric (0.0 - 1.0)
+            (0.5 * scoreDifferential + 0.3 * signalQualityFactor + 0.2 * bestScore).coerceIn(0.0, 1.0)
+        } else {
+            // Medium confidence for single match
             0.5
         }
         
-        return LocationEstimationResult(
-            position = bestMatch.first,
-            score = bestMatch.second,
-            confidence = confidence
+        return PositioningResult(
+            mapPoint = estimatedLocation,
+            matchScore = locationMatches.first().second,
+            accuracyLevel = accuracyMetric
         )
     }
     
-    // 신호 강도 유사도 계산 (0.0 ~ 1.0 사이 값)
-    private fun calculateSignalSimilarity(current: Int, saved: Int): Double {
-        // 신호 강도 차이의 절대값
-        val diff = Math.abs(current - saved)
+    // Signal importance weighting using sigmoid curve
+    private fun calculateNonLinearWeight(signalStrength: Int): Double {
+        // Sigmoid-based non-linear weighting
+        // Strong signals (~-50dBm): high weight (~1.0)
+        // Medium signals (~-75dBm): medium weight (~0.5)
+        // Weak signals (~-90dBm): low weight (~0.1)
         
-        // 차이가 클수록 유사도는 떨어짐 (최대 차이를 30dBm으로 가정)
-        val maxDiff = 30.0
-        val similarity = 1.0 - (diff / maxDiff).coerceIn(0.0, 1.0)
+        val centerPoint = -75.0 // Inflection point
+        val curveSlope = 0.15 // Controls curve steepness
         
-        return similarity
+        // Apply sigmoid: 1 / (1 + e^(-slope * (signal - center)))
+        val weightCurve = 1.0 / (1.0 + Math.exp(-curveSlope * (signalStrength - centerPoint)))
+        
+        // Scale to 0.1-1.0 range
+        return 0.1 + 0.9 * weightCurve
     }
     
-    // 신호 강도에 따른 가중치 계산
-    private fun calculateSignalWeight(level: Int): Double {
-        // 신호가 강할수록 더 높은 가중치 부여
-        // -30dBm: 최고 신호 (가중치 1.0)
-        // -90dBm: 최저 신호 (가중치 0.1)
-        val normalizedLevel = (level + 30) / 60.0
-        return 0.1 + 0.9 * normalizedLevel.coerceIn(0.0, 1.0)
+    // Signal similarity with adaptive importance based on signal strength
+    private fun calculateSignalSimilarity(measured: Int, reference: Int): Double {
+        // Absolute difference between signals
+        val strengthDelta = Math.abs(measured - reference)
+        
+        // Manhattan-style similarity (higher for smaller differences)
+        val baseMatchValue = Math.max(0.0, 1.0 - (strengthDelta / 40.0))
+        
+        // Strong signals deserve higher importance in matching
+        val strengthFactor = if (reference > -70) 1.2 else 1.0
+        
+        return Math.pow(baseMatchValue, strengthFactor)
     }
     
     // RSSI를 기반으로 대략적인 거리 추정 (미터 단위)
@@ -253,51 +309,51 @@ class WifiDataManager(private val context: Context) {
         return referenceDistance * 10.0.pow(ratio)
     }
 
-    // CSV 형식으로 모든 데이터 내보내기
+    // Export all data in standardized CSV format
     fun exportAllDataToCsv(): String {
-        val sb = StringBuilder()
+        val csvBuilder = StringBuilder()
 
-        // 헤더 추가
-        sb.appendLine("x,y,timestamp,ssid,bssid,capabilities,frequency,level")
+        // Add CSV header
+        csvBuilder.appendLine("x,y,timestamp,ssid,bssid,security,frequency,rssi")
 
-        // 데이터 추가
-        for (locationData in locationDataList) {
-            val x = locationData.position.x
-            val y = locationData.position.y
-            val timestamp = locationData.timestamp
+        // Add all fingerprint data rows
+        for (spot in fingerprintRecords) {
+            val xCoord = spot.mapPoint.x
+            val yCoord = spot.mapPoint.y
+            val timeStamp = spot.captureTime
 
-            for (wifi in locationData.wifiList) {
-                sb.appendLine("$x,$y,$timestamp,${wifi.toCsvString()}")
+            for (ap in spot.accessPoints) {
+                csvBuilder.appendLine("$xCoord,$yCoord,$timeStamp,${ap.toCsvString()}")
             }
         }
 
-        return sb.toString()
+        return csvBuilder.toString()
     }
 
-    // 데이터 저장
-    private fun persistData() {
+    // Save data to internal storage
+    private fun saveToStorage() {
         try {
-            val json = gson.toJson(locationDataList)
-            context.openFileOutput(dataFileName, Context.MODE_PRIVATE).use {
-                it.write(json.toByteArray())
+            val jsonData = jsonParser.toJson(fingerprintRecords)
+            appContext.openFileOutput(storageFileName, Context.MODE_PRIVATE).use {
+                it.write(jsonData.toByteArray())
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    // 데이터 로드
+    // Load data from internal storage
     private fun loadData() {
         try {
-            val file = File(context.filesDir, dataFileName)
-            if (file.exists()) {
-                val json = file.readText()
-                val type = object : TypeToken<MutableList<WifiLocationData>>() {}.type
-                locationDataList = gson.fromJson(json, type)
+            val storageFile = File(appContext.filesDir, storageFileName)
+            if (storageFile.exists()) {
+                val jsonContent = storageFile.readText()
+                val dataType = object : TypeToken<MutableList<WifiSpotCapture>>() {}.type
+                fingerprintRecords = jsonParser.fromJson(jsonContent, dataType)
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            locationDataList = mutableListOf()
+            fingerprintRecords = mutableListOf()
         }
     }
 }

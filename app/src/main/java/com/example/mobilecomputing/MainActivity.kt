@@ -24,21 +24,21 @@ import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var mapImageView: ImageView
-    private lateinit var uploadMapButton: Button
-    private lateinit var deleteMapButton: Button
-    private lateinit var wardrivingButton: Button
-    private lateinit var localizationButton: Button
-    private lateinit var exportButton: Button
-    private lateinit var deleteDataButton: Button
-    private lateinit var coordinateTextView: TextView
+    private lateinit var floorMapView: ImageView
+    private lateinit var btnUploadMap: Button
+    private lateinit var btnDeleteMap: Button
+    private lateinit var btnDataCollection: Button
+    private lateinit var btnPositioning: Button
+    private lateinit var btnExportData: Button
+    private lateinit var btnClearData: Button
+    private lateinit var tvPositionInfo: TextView
 
-    private var currentMapBitmap: Bitmap? = null
-    private var displayedBitmap: Bitmap? = null
-    private var selectedPoint: PointF? = null
+    private var baseMapImage: Bitmap? = null
+    private var annotatedMapImage: Bitmap? = null
+    private var markedLocation: PointF? = null
 
-    private lateinit var wifiScanHelper: WifiScanHelper
-    private lateinit var wifiDataManager: WifiDataManager
+    private lateinit var wifiScanner: WifiScanHelper
+    private lateinit var dataStorage: WifiDataManager
 
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 1000
@@ -51,22 +51,22 @@ class MainActivity : AppCompatActivity() {
             // 디버깅용 로그
             android.util.Log.d("MainActivity", "onCreate started")
 
-            // 유틸리티 초기화
-            wifiScanHelper = WifiScanHelper(this)
-            wifiDataManager = WifiDataManager(this)
+            // Initialize helpers
+            wifiScanner = WifiScanHelper(this)
+            dataStorage = WifiDataManager(this)
 
-            // 디버깅용 로그
+            // Debug logging
             android.util.Log.d("MainActivity", "Utilities initialized")
 
-            // 뷰 초기화
-            mapImageView = findViewById(R.id.mapImageView)
-            uploadMapButton = findViewById(R.id.uploadMapButton)
-            deleteMapButton = findViewById(R.id.deleteMapButton)
-            wardrivingButton = findViewById(R.id.wardrivingButton)
-            localizationButton = findViewById(R.id.localizationButton)
-            exportButton = findViewById(R.id.exportButton)
-            deleteDataButton = findViewById(R.id.deleteDataButton)
-            coordinateTextView = findViewById(R.id.coordinateTextView)
+            // Initialize views
+            floorMapView = findViewById(R.id.mapImageView)
+            btnUploadMap = findViewById(R.id.uploadMapButton)
+            btnDeleteMap = findViewById(R.id.deleteMapButton)
+            btnDataCollection = findViewById(R.id.wardrivingButton)
+            btnPositioning = findViewById(R.id.localizationButton)
+            btnExportData = findViewById(R.id.exportButton)
+            btnClearData = findViewById(R.id.deleteDataButton)
+            tvPositionInfo = findViewById(R.id.coordinateTextView)
 
             // 디버깅용 로그
             android.util.Log.d("MainActivity", "Views initialized")
@@ -77,57 +77,57 @@ class MainActivity : AppCompatActivity() {
             // 권한 요청
             requestPermissions()
 
-            // 지도 업로드 버튼
-            uploadMapButton.setOnClickListener {
+            // Map selection button
+            btnUploadMap.setOnClickListener {
                 openGallery()
             }
 
-            // 지도 삭제 버튼
-            deleteMapButton.setOnClickListener {
+            // Map removal button
+            btnDeleteMap.setOnClickListener {
                 deleteMap()
             }
 
-            // 워드라이빙 버튼
-            wardrivingButton.setOnClickListener {
-                if (selectedPoint != null) {
-                    startWardrivingMode()
+            // Data collection button
+            btnDataCollection.setOnClickListener {
+                if (markedLocation != null) {
+                    initiateDataCollection()
                 } else {
-                    Toast.makeText(this, "Please select a location on the map", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Please select a reference point on the map", Toast.LENGTH_SHORT).show()
                 }
             }
 
-            // 위치 추적 버튼
-            localizationButton.setOnClickListener {
-                startLocalizationMode()
+            // Positioning button
+            btnPositioning.setOnClickListener {
+                initiatePositioning()
             }
 
-            // 데이터 내보내기 버튼
-            exportButton.setOnClickListener {
-                exportData()
+            // Data export button
+            btnExportData.setOnClickListener {
+                exportFingerprints()
             }
             
-            // 데이터 삭제 버튼
-            deleteDataButton.setOnClickListener {
-                deleteAllData()
+            // Data wiping button
+            btnClearData.setOnClickListener {
+                clearAllFingerprints()
             }
 
-            // 지도 클릭 이벤트 처리
-            mapImageView.setOnTouchListener { _, event ->
-                if (event.action == MotionEvent.ACTION_DOWN && currentMapBitmap != null) {
-                    val x = event.x / mapImageView.width
-                    val y = event.y / mapImageView.height
-                    selectedPoint = PointF(x, y)
+            // Map touch event handler
+            floorMapView.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN && baseMapImage != null) {
+                    val normalizedX = event.x / floorMapView.width
+                    val normalizedY = event.y / floorMapView.height
+                    markedLocation = PointF(normalizedX, normalizedY)
 
-                    // 좌표 표시
-                    coordinateTextView.text = "Selected coordinates: (${String.format("%.2f", x)}, ${String.format("%.2f", y)})"
+                    // Display position information
+                    tvPositionInfo.text = "Reference point: (${String.format("%.2f", normalizedX)}, ${String.format("%.2f", normalizedY)})"
 
-                    // 선택된 위치가 있는 경우 위치 관리 옵션 제공
-                    handleLocationSelection(PointF(x, y))
+                    // Check if location already has data
+                    offerLocationOptions(PointF(normalizedX, normalizedY))
 
-                    // 버튼 상태 업데이트
+                    // Update UI controls
                     updateButtonStates()
 
-                    // 선택된 지점 표시
+                    // Update visual markers
                     updateMapWithMarkers()
 
                     return@setOnTouchListener true
@@ -151,83 +151,82 @@ class MainActivity : AppCompatActivity() {
     }
     
     // 모든 수집 데이터 삭제 기능
-    private fun deleteAllData() {
-        // 저장된 데이터 개수 확인
-        val dataCount = wifiDataManager.getDataCount()
+    private fun clearAllFingerprints() {
+        // Check for existing data
+        val fingerprintCount = dataStorage.getFingerprintCount()
         
-        if (dataCount == 0) {
-            Toast.makeText(this, "No data to delete", Toast.LENGTH_SHORT).show()
+        if (fingerprintCount == 0) {
+            Toast.makeText(this, "No data to clear", Toast.LENGTH_SHORT).show()
             return
         }
         
-        // 확인 대화상자 표시
+        // Confirmation dialog
         AlertDialog.Builder(this)
-            .setTitle("Delete All Data")
-            .setMessage("Are you sure you want to delete all collected WiFi data? This action cannot be undone. ($dataCount data points will be deleted)")
-            .setPositiveButton("Yes, Delete All") { _, _ ->
-                // 모든 데이터 삭제
-                if (wifiDataManager.deleteAllData()) {
-                    Toast.makeText(this, "All WiFi data has been deleted", Toast.LENGTH_SHORT).show()
-                    // 지도 업데이트 (마커 제거)
+            .setTitle("Clear All Fingerprint Data")
+            .setMessage("Are you sure you want to delete all WiFi positioning data? This action cannot be undone. ($fingerprintCount records will be permanently removed)")
+            .setPositiveButton("Delete Everything") { _, _ ->
+                // Attempt data deletion
+                if (dataStorage.wipeAllData()) {
+                    Toast.makeText(this, "All positioning data has been removed", Toast.LENGTH_SHORT).show()
+                    // Refresh map view
                     updateMapWithMarkers()
-                    // 버튼 상태 업데이트
+                    // Update button availability
                     updateButtonStates()
                 } else {
-                    Toast.makeText(this, "Failed to delete data", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Data removal failed", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
     
-    // 위치 선택 시 이미 데이터가 있는 위치인지 확인하고 옵션 제공
-    private fun handleLocationSelection(point: PointF) {
-        val existingData = wifiDataManager.getDataAtPosition(point)
+    // Handle selection of locations with existing data
+    private fun offerLocationOptions(spot: PointF) {
+        val fingerprintsHere = dataStorage.getFingerprintsAt(spot)
         
-        if (existingData.isNotEmpty()) {
-            // 이미 데이터가 있는 위치인 경우 옵션 제공
+        if (fingerprintsHere.isNotEmpty()) {
+            // Location already has data - show options
             AlertDialog.Builder(this)
-                .setTitle("What would like to do for this location?")
-                .setItems(arrayOf("Add new WiFi data", "Delete all data", "See the data", "Cancel")) { _, which ->
-                    when (which) {
-                        0 -> startWardrivingMode() // 새 데이터 추가
+                .setTitle("Location Options")
+                .setItems(arrayOf("Add new fingerprint", "Remove location data", "View fingerprint data", "Cancel")) { _, selection ->
+                    when (selection) {
+                        0 -> initiateDataCollection() // Add more data
                         1 -> {
-                            // 이 위치의 모든 데이터 삭제
-                            wifiDataManager.deleteDataAtPosition(point)
-                            Toast.makeText(this, "Data deleted for this location", Toast.LENGTH_SHORT).show()
+                            // Remove fingerprints at this location
+                            dataStorage.removeSpotData(spot)
+                            Toast.makeText(this, "Location data removed", Toast.LENGTH_SHORT).show()
                             updateMapWithMarkers()
                             updateButtonStates()
                         }
-                        2 -> showLocationData(existingData) // 데이터 보기
-                        3 -> {} // 취소
+                        2 -> showSpotFingerprints(fingerprintsHere) // View data
+                        3 -> {} // Cancel
                     }
                 }
                 .show()
         }
     }
     
-    // 특정 위치의 저장된 WiFi 데이터 표시
-    private fun showLocationData(locationData: List<WifiLocationData>) {
-        if (locationData.isEmpty()) return
+    // Display WiFi fingerprint data for a specific location
+    private fun showSpotFingerprints(fingerprints: List<WifiSpotCapture>) {
+        if (fingerprints.isEmpty()) return
         
-        val sb = StringBuilder()
-        for (data in locationData) {
-            sb.appendLine("Position: (${String.format("%.2f", data.position.x)}, ${String.format("%.2f", data.position.y)})")
-            sb.appendLine("Time: ${data.getFormattedDate()}")
-            sb.appendLine("APs detected: ${data.wifiList.size}")
-            sb.appendLine("--------------------------")
+        val contentBuilder = StringBuilder()
+        for (capture in fingerprints) {
+            contentBuilder.appendLine("Position: (${String.format("%.2f", capture.mapPoint.x)}, ${String.format("%.2f", capture.mapPoint.y)})")
+            contentBuilder.appendLine("Timestamp: ${capture.getFormattedDate()}")
+            contentBuilder.appendLine("Networks: ${capture.accessPoints.size}")
+            contentBuilder.appendLine("--------------------------")
             
-            for (wifi in data.wifiList) {
-                sb.appendLine("${wifi.ssid}; ${wifi.bssid}; ${wifi.capabilities}; ${wifi.frequency} MHz; ${wifi.level} dBm")
+            for (network in capture.accessPoints) {
+                contentBuilder.appendLine("${network.ssid}; ${network.bssid}; ${network.securityMode}; ${network.freqChannel} MHz; ${network.signalDbm} dBm")
             }
-            sb.appendLine("\n")
+            contentBuilder.appendLine("\n")
         }
         
         AlertDialog.Builder(this)
-            .setTitle("Saved APs")
-            .setMessage(sb.toString())
-            .setPositiveButton("Yes") { _, _ -> }
-            .setNeutralButton("Would you like to go back?", null)
+            .setTitle("Stored Fingerprints")
+            .setMessage(contentBuilder.toString())
+            .setPositiveButton("OK", null)
             .show()
     }
     
@@ -251,14 +250,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateButtonStates() {
-        val mapExists = currentMapBitmap != null
-        val hasData = wifiDataManager.getDataCount() > 0
+        val isMapLoaded = baseMapImage != null
+        val hasFingerprints = dataStorage.getFingerprintCount() > 0
         
-        deleteMapButton.isEnabled = mapExists
-        wardrivingButton.isEnabled = mapExists && selectedPoint != null
-        localizationButton.isEnabled = mapExists && hasData
-        exportButton.isEnabled = mapExists && hasData
-        deleteDataButton.isEnabled = hasData
+        btnDeleteMap.isEnabled = isMapLoaded
+        btnDataCollection.isEnabled = isMapLoaded && markedLocation != null
+        btnPositioning.isEnabled = isMapLoaded && hasFingerprints
+        btnExportData.isEnabled = isMapLoaded && hasFingerprints
+        btnClearData.isEnabled = hasFingerprints
     }
 
     private fun requestPermissions() {
@@ -300,11 +299,11 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Delete Map")
             .setMessage("Are you sure you want to delete the map?")
             .setPositiveButton("Yes") { _, _ ->
-                mapImageView.setImageDrawable(null)
-                currentMapBitmap = null
-                displayedBitmap = null
-                selectedPoint = null
-                coordinateTextView.text = ""
+                floorMapView.setImageDrawable(null)
+                baseMapImage = null
+                annotatedMapImage = null
+                markedLocation = null
+                tvPositionInfo.text = ""
                 updateButtonStates()
                 Toast.makeText(this, "Map deleted", Toast.LENGTH_SHORT).show()
             }
@@ -312,184 +311,344 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun startWardrivingMode() {
-        // 워드라이빙 모드 다이얼로그
+    private fun initiateDataCollection() {
+        // Fingerprinting interface
         AlertDialog.Builder(this)
-            .setTitle("WiFi Scan")
-            .setMessage("Would like to scan?")
-            .setPositiveButton("Yes") { _, _ ->
-                // WiFi 스캔 시작
-                wifiScanHelper.scanWifi { scanResults ->
-                    // 스캔 결과 표시
-                    showScanResults(scanResults)
+            .setTitle("WiFi Fingerprint Collection")
+            .setMessage("Would you like to scan for networks at this reference point?")
+            .setPositiveButton("Scan") { _, _ ->
+                // Show scanning indicator
+                val scanProgressDialog = AlertDialog.Builder(this)
+                    .setTitle("Scanning Networks...")
+                    .setMessage("Detecting WiFi access points in range")
+                    .setCancelable(false)
+                    .create()
+                    
+                scanProgressDialog.show()
+                
+                // Trigger WiFi scan
+                wifiScanner.scanWifi { scanResults ->
+                    scanProgressDialog.dismiss()
+                    // Show discovered networks
+                    displayNetworkResults(scanResults)
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun showScanResults(scanResults: List<ScanResult>) {
-        // 스캔 결과 표시 및 저장 여부 확인
-        val formattedResults = wifiScanHelper.formatScanResults(scanResults)
+    private fun displayNetworkResults(scanResults: List<ScanResult>) {
+        // Format scan data for display
+        val networkDetails = wifiScanner.formatScanResults(scanResults)
         
-        // 신호 강도에 따라 정렬
-        val sortedResults = formattedResults.sortedByDescending { result ->
-            val levelStr = result.substringAfterLast("; ").substringBefore(" dBm")
-            levelStr.toIntOrNull() ?: -100
+        // Arrange by signal strength
+        val orderedResults = networkDetails.sortedByDescending { entry ->
+            val signalValue = entry.substringAfterLast("; ").substringBefore(" dBm")
+            signalValue.toIntOrNull() ?: -100
         }
         
-        val message = sortedResults.joinToString("\n")
+        val displayContent = if (orderedResults.isEmpty()) {
+            "No WiFi networks detected in range."
+        } else {
+            "Detected ${orderedResults.size} wireless networks:\n\n" + orderedResults.joinToString("\n")
+        }
 
         AlertDialog.Builder(this)
-            .setTitle("Scanned APs")
-            .setMessage(message)
-            .setPositiveButton("Save") { _, _ ->
-                // 데이터 저장
-                saveWifiData(scanResults)
+            .setTitle("Network Scan Results")
+            .setMessage(displayContent)
+            .setPositiveButton("Save Fingerprint") { _, _ ->
+                // Save fingerprint data
+                storeNetworkData(scanResults)
             }
-            .setNegativeButton("No", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun saveWifiData(scanResults: List<ScanResult>) {
-        val selectedPos = selectedPoint ?: return
+    private fun storeNetworkData(scanResults: List<ScanResult>) {
+        val targetLocation = markedLocation ?: return
 
-        // ScanResult -> WifiInfo 변환
-        val wifiInfoList = scanResults.map { WifiInfo.fromScanResult(it) }
+        // Filter out weak signals
+        val reliableNetworks = scanResults.filter { it.level > -90 }
+        
+        if (reliableNetworks.isEmpty()) {
+            Toast.makeText(this, "No reliable WiFi signals detected", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-        // 데이터 저장
-        wifiDataManager.saveWifiData(selectedPos, wifiInfoList)
+        // Transform to data model
+        val networkFingerprints = reliableNetworks.map { WifiInfo.fromScanResult(it) }
 
-        // 성공 메시지
-        Toast.makeText(this, "WiFi data saved", Toast.LENGTH_SHORT).show()
+        // Store fingerprint data
+        dataStorage.storeFingerprint(targetLocation, networkFingerprints)
 
-        // 지도에 마커 업데이트
+        // Success feedback
+        Toast.makeText(this, "WiFi fingerprint saved (${networkFingerprints.size} networks)", Toast.LENGTH_SHORT).show()
+
+        // Refresh map display
         updateMapWithMarkers()
         
-        // 버튼 상태 업데이트
+        // Update UI control states
         updateButtonStates()
+        
+        // Show detailed confirmation
+        val uniqueAccessPoints = networkFingerprints.distinctBy { it.bssid }.size
+        val highQualitySignals = networkFingerprints.count { it.signalDbm > -70 }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Fingerprint Saved")
+            .setMessage("Reference point: (${String.format("%.2f", targetLocation.x)}, ${String.format("%.2f", targetLocation.y)})\n\n" +
+                    "Networks recorded: ${networkFingerprints.size}\n" +
+                    "Unique access points: $uniqueAccessPoints\n" +
+                    "High quality signals: $highQualitySignals\n\n" +
+                    "For optimal positioning accuracy, collect fingerprints at multiple nearby points.")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun updateMapWithMarkers() {
-        val baseBitmap = currentMapBitmap ?: return
+        val originalMap = baseMapImage ?: return
 
-        // 복사본 생성
-        val bitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(bitmap)
+        // Create working copy of the map
+        val annotatedMap = originalMap.copy(Bitmap.Config.ARGB_8888, true)
+        val mapCanvas = Canvas(annotatedMap)
 
-        // 페인트 설정
-        val paint = Paint().apply {
+        // Configure marker styles
+        val markerStyle = Paint().apply {
             color = Color.RED
             style = Paint.Style.FILL
+            isAntiAlias = true
         }
 
-        // 저장된 모든 위치 표시
-        val savedPositions = wifiDataManager.getAllPositions()
-        for (position in savedPositions) {
-            val x = position.x * bitmap.width
-            val y = position.y * bitmap.height
-            canvas.drawCircle(x, y, 10f, paint)
+        // Draw reference points from stored data
+        val mappedLocations = dataStorage.getSampledLocations()
+        for (location in mappedLocations) {
+            val pixelX = location.x * annotatedMap.width
+            val pixelY = location.y * annotatedMap.height
+            mapCanvas.drawCircle(pixelX, pixelY, 10f, markerStyle)
         }
 
-        // 현재 선택된 위치 표시 (파란색)
-        selectedPoint?.let {
-            paint.color = Color.BLUE
-            val x = it.x * bitmap.width
-            val y = it.y * bitmap.height
-            canvas.drawCircle(x, y, 15f, paint)
+        // Highlight currently selected point (in blue)
+        markedLocation?.let {
+            markerStyle.color = Color.BLUE
+            markerStyle.setShadowLayer(5f, 0f, 0f, Color.WHITE) // Add halo effect
+            val pixelX = it.x * annotatedMap.width
+            val pixelY = it.y * annotatedMap.height
+            mapCanvas.drawCircle(pixelX, pixelY, 15f, markerStyle)
         }
 
-        // 업데이트된 비트맵 표시
-        displayedBitmap = bitmap
-        mapImageView.setImageBitmap(bitmap)
+        // Display updated map
+        annotatedMapImage = annotatedMap
+        floorMapView.setImageBitmap(annotatedMap)
     }
 
-    private fun startLocalizationMode() {
-        // 실시간 위치추적 모드 시작
-        Toast.makeText(this, "Scanning WiFi networks for location...", Toast.LENGTH_SHORT).show()
+    private fun initiatePositioning() {
+        // Start real-time positioning
+        Toast.makeText(this, "Scanning networks for position estimation...", Toast.LENGTH_SHORT).show()
         
-        wifiScanHelper.scanWifi { scanResults ->
-            locatePosition(scanResults)
+        wifiScanner.scanWifi { scanResults ->
+            determineUserLocation(scanResults)
         }
     }
 
-    // 개선된 위치 추정 알고리즘 구현
-    private fun locatePosition(scanResults: List<ScanResult>) {
+    // Enhanced location tracking algorithm
+    private fun determineUserLocation(scanResults: List<ScanResult>) {
         if (scanResults.isEmpty()) {
             Toast.makeText(this, "No WiFi networks detected", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // ScanResult -> WifiInfo 변환
-        val currentWifiInfos = scanResults.map { WifiInfo.fromScanResult(it) }
+        // Filter for better quality signals
+        val usableScanResults = scanResults.filter { it.level > -87 }
         
-        // 위치 추정
-        val estimationResult = wifiDataManager.estimateLocation(currentWifiInfos)
-        
-        if (estimationResult != null) {
-            // 위치 표시
-            selectedPoint = estimationResult.position
-            
-            // 신뢰도에 따른 메시지 생성
-            val confidencePercent = (estimationResult.confidence * 100).roundToInt()
-            val confidenceMessage = when {
-                confidencePercent > 80 -> "High confidence"
-                confidencePercent > 50 -> "Medium confidence"
-                else -> "Low confidence"
-            }
-            
-            // 좌표 및 신뢰도 표시
-            coordinateTextView.text = "(${String.format("%.2f", estimationResult.position.x)}, " +
-                    "${String.format("%.2f", estimationResult.position.y)}) - $confidenceMessage"
-            
-            updateMapWithMarkers()
-
-            Toast.makeText(this, "Location estimated with $confidencePercent% confidence", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Could not estimate location. Try collecting more data.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun exportData() {
-        val csvData = wifiDataManager.exportAllDataToCsv()
-
-        if (csvData.isEmpty()) {
-            Toast.makeText(this, "No data to export", Toast.LENGTH_SHORT).show()
+        if (usableScanResults.size < 3) {
+            Toast.makeText(this, "Not enough WiFi signals for accurate positioning (${usableScanResults.size}/3)", 
+                Toast.LENGTH_SHORT).show()
             return
         }
-
-        // CSV 파일 생성
-        val csvFile = File(getExternalFilesDir(null), "wifi_data.csv")
-        try {
-            FileOutputStream(csvFile).use {
-                it.write(csvData.toByteArray())
+        
+        // Transform scan results to our data model
+        val accessPointReadings = usableScanResults.map { WifiInfo.fromScanResult(it) }
+        
+        // Show working indicator
+        val processingDialog = AlertDialog.Builder(this)
+            .setTitle("Calculating Position...")
+            .setMessage("Processing ${usableScanResults.size} WiFi networks")
+            .setCancelable(false)
+            .create()
+        
+        processingDialog.show()
+        
+        // Background processing thread
+        Thread {
+            // Execute positioning algorithm
+            val positioningOutput = dataStorage.estimateLocation(accessPointReadings)
+            
+            // UI thread for display
+            runOnUiThread {
+                processingDialog.dismiss()
+                
+                if (positioningOutput != null) {
+                    // Store the calculated position
+                    markedLocation = positioningOutput.mapPoint
+                    
+                    // Format display based on accuracy
+                    val accuracyPercentage = (positioningOutput.accuracyLevel * 100).roundToInt()
+                    val accuracyIndicator = when {
+                        accuracyPercentage >= 75 -> "High Accuracy"
+                        accuracyPercentage >= 50 -> "Medium Accuracy"
+                        accuracyPercentage >= 25 -> "Low Accuracy"
+                        else -> "Very Low Accuracy (Approximate Only)"
+                    }
+                    
+                    val indicatorColor = when {
+                        accuracyPercentage >= 75 -> Color.parseColor("#4CAF50") // Green
+                        accuracyPercentage >= 50 -> Color.parseColor("#FFC107") // Yellow
+                        accuracyPercentage >= 25 -> Color.parseColor("#FF9800") // Orange
+                        else -> Color.parseColor("#F44336") // Red
+                    }
+                    
+                    // Format position text
+                    val locationText = "(${String.format("%.2f", positioningOutput.mapPoint.x)}, " +
+                            "${String.format("%.2f", positioningOutput.mapPoint.y)})"
+                    
+                    // Build rich text with colored accuracy indicator
+                    val displayText = "$locationText - $accuracyIndicator ($accuracyPercentage%)"
+                    val formattedText = android.text.SpannableString(displayText)
+                    formattedText.setSpan(
+                        android.text.style.ForegroundColorSpan(indicatorColor),
+                        locationText.length + 3, displayText.length,
+                        android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    
+                    tvPositionInfo.text = formattedText
+                    
+                    // Update visual map markers
+                    updateMapWithMarkers()
+                    
+                    // Show results dialog with details
+                    AlertDialog.Builder(this)
+                        .setTitle("Position Determined")
+                        .setMessage("Your location: $locationText\nAccuracy: $accuracyPercentage%\n\n" +
+                                "Networks analyzed: ${usableScanResults.size}\n" +
+                                "Reference points: ${dataStorage.getFingerprintCount()}\n\n" +
+                                "Note: For better accuracy, collect more reference data in nearby areas.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                } else {
+                    // Positioning failed
+                    val uniqueNetworks = accessPointReadings.groupBy { it.bssid }.size
+                    val mappedLocations = dataStorage.getSampledLocations().size
+                    
+                    AlertDialog.Builder(this)
+                        .setTitle("Positioning Failed")
+                        .setMessage("Unable to determine your current location.\n\n" +
+                                "Unique networks found: ${uniqueNetworks}\n" +
+                                "Mapped reference points: ${mappedLocations}\n\n" +
+                                "Troubleshooting:\n" +
+                                "1. Collect fingerprint data from more locations\n" +
+                                "2. Verify WiFi is enabled\n" +
+                                "3. Ensure you've collected data near your current position")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
             }
-
-            // 이메일로 파일 공유
-            shareFileViaEmail(csvFile)
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+        }.start()
     }
 
-    private fun shareFileViaEmail(file: File) {
-        val uri = FileProvider.getUriForFile(
-            this,
-            "${applicationContext.packageName}.provider",
-            file
-        )
-
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
-            putExtra(Intent.EXTRA_SUBJECT, "WiFi Location Data")
-            putExtra(Intent.EXTRA_TEXT, "Attached is the collected WiFi location data.")
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    private fun exportFingerprints() {
+        // Verify data availability
+        val fingerprintCount = dataStorage.getFingerprintCount()
+        if (fingerprintCount == 0) {
+            Toast.makeText(this, "No positioning data available to export", Toast.LENGTH_SHORT).show()
+            return
         }
+        
+        // Display export information
+        val mappedSpots = dataStorage.getSampledLocations().size
+        
+        AlertDialog.Builder(this)
+            .setTitle("Export Fingerprint Database")
+            .setMessage("Prepare to export WiFi positioning database:\n\n" +
+                    "• Fingerprint records: $fingerprintCount\n" +
+                    "• Reference points: $mappedSpots\n\n" +
+                    "Data will be formatted as CSV for analysis.")
+            .setPositiveButton("Export") { _, _ ->
+                // Show export progress
+                val exportDialog = AlertDialog.Builder(this)
+                    .setTitle("Processing Data...")
+                    .setMessage("Creating export file")
+                    .setCancelable(false)
+                    .create()
+                
+                exportDialog.show()
+                
+                // Background processing
+                Thread {
+                    val csvOutput = dataStorage.exportAllDataToCsv()
+                    
+                    runOnUiThread {
+                        exportDialog.dismiss()
+                        
+                        // Generate file with timestamp
+                        val timeCode = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
+                            .format(java.util.Date())
+                        val exportFilename = "indoor_positioning_db_$timeCode.csv"
+                        val outputFile = File(getExternalFilesDir(null), exportFilename)
+                        
+                        try {
+                            FileOutputStream(outputFile).use {
+                                it.write(csvOutput.toByteArray())
+                            }
+                            
+                            // Send via email
+                            sendDataViaEmail(outputFile, mappedSpots, fingerprintCount)
+                            
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
-        startActivity(Intent.createChooser(intent, "Send Email"))
+    private fun sendDataViaEmail(dataFile: File, locationTotal: Int, recordTotal: Int) {
+        try {
+            val fileUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.provider",
+                dataFile
+            )
+            
+            val fileSize = String.format("%.2f", dataFile.length() / (1024.0 * 1024.0))
+            
+            val messageContent = "This file contains WiFi fingerprint data collected for indoor positioning.\n\n" +
+                    "Dataset Information:\n" +
+                    "• Filename: ${dataFile.name}\n" +
+                    "• Size: ${fileSize} MB\n" +
+                    "• Reference points: $locationTotal\n" +
+                    "• Total readings: $recordTotal\n\n" +
+                    "This dataset can be used for indoor positioning algorithm development and testing."
+
+            val emailIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_SUBJECT, "Indoor Positioning Dataset")
+                putExtra(Intent.EXTRA_TEXT, messageContent)
+                putExtra(Intent.EXTRA_STREAM, fileUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            startActivity(Intent.createChooser(emailIntent, "Send Data Using"))
+            
+            // Success notification
+            Toast.makeText(this, "Export successful: ${dataFile.name}", Toast.LENGTH_SHORT).show()
+            
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error sharing file: ${e.message}", Toast.LENGTH_SHORT).show()
+            e.printStackTrace()
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -499,9 +658,9 @@ class MainActivity : AppCompatActivity() {
             val imageUri = data?.data
             if (imageUri != null) {
                 try {
-                    currentMapBitmap = MediaStore.Images.Media.getBitmap(contentResolver, imageUri)
-                    selectedPoint = null
-                    coordinateTextView.text = ""
+                    baseMapImage = MediaStore.Images.Media.getBitmap(contentResolver, imageUri)
+                    markedLocation = null
+                    tvPositionInfo.text = ""
                     updateButtonStates()
                     updateMapWithMarkers()
                 } catch (e: Exception) {
