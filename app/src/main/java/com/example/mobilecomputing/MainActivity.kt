@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var wardrivingButton: Button
     private lateinit var localizationButton: Button
     private lateinit var exportButton: Button
+    private lateinit var deleteDataButton: Button
     private lateinit var coordinateTextView: TextView
 
     private var currentMapBitmap: Bitmap? = null
@@ -64,6 +65,7 @@ class MainActivity : AppCompatActivity() {
             wardrivingButton = findViewById(R.id.wardrivingButton)
             localizationButton = findViewById(R.id.localizationButton)
             exportButton = findViewById(R.id.exportButton)
+            deleteDataButton = findViewById(R.id.deleteDataButton)
             coordinateTextView = findViewById(R.id.coordinateTextView)
 
             // 디버깅용 로그
@@ -102,6 +104,11 @@ class MainActivity : AppCompatActivity() {
             // 데이터 내보내기 버튼
             exportButton.setOnClickListener {
                 exportData()
+            }
+            
+            // 데이터 삭제 버튼
+            deleteDataButton.setOnClickListener {
+                deleteAllData()
             }
 
             // 지도 클릭 이벤트 처리
@@ -143,6 +150,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    // 모든 수집 데이터 삭제 기능
+    private fun deleteAllData() {
+        // 저장된 데이터 개수 확인
+        val dataCount = wifiDataManager.getDataCount()
+        
+        if (dataCount == 0) {
+            Toast.makeText(this, "No data to delete", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // 확인 대화상자 표시
+        AlertDialog.Builder(this)
+            .setTitle("Delete All Data")
+            .setMessage("Are you sure you want to delete all collected WiFi data? This action cannot be undone. ($dataCount data points will be deleted)")
+            .setPositiveButton("Yes, Delete All") { _, _ ->
+                // 모든 데이터 삭제
+                if (wifiDataManager.deleteAllData()) {
+                    Toast.makeText(this, "All WiFi data has been deleted", Toast.LENGTH_SHORT).show()
+                    // 지도 업데이트 (마커 제거)
+                    updateMapWithMarkers()
+                    // 버튼 상태 업데이트
+                    updateButtonStates()
+                } else {
+                    Toast.makeText(this, "Failed to delete data", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
     // 위치 선택 시 이미 데이터가 있는 위치인지 확인하고 옵션 제공
     private fun handleLocationSelection(point: PointF) {
         val existingData = wifiDataManager.getDataAtPosition(point)
@@ -159,6 +196,7 @@ class MainActivity : AppCompatActivity() {
                             wifiDataManager.deleteDataAtPosition(point)
                             Toast.makeText(this, "Data deleted for this location", Toast.LENGTH_SHORT).show()
                             updateMapWithMarkers()
+                            updateButtonStates()
                         }
                         2 -> showLocationData(existingData) // 데이터 보기
                         3 -> {} // 취소
@@ -214,10 +252,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateButtonStates() {
         val mapExists = currentMapBitmap != null
+        val hasData = wifiDataManager.getDataCount() > 0
+        
         deleteMapButton.isEnabled = mapExists
         wardrivingButton.isEnabled = mapExists && selectedPoint != null
-        localizationButton.isEnabled = mapExists
-        exportButton.isEnabled = mapExists
+        localizationButton.isEnabled = mapExists && hasData
+        exportButton.isEnabled = mapExists && hasData
+        deleteDataButton.isEnabled = hasData
     }
 
     private fun requestPermissions() {
@@ -324,6 +365,9 @@ class MainActivity : AppCompatActivity() {
 
         // 지도에 마커 업데이트
         updateMapWithMarkers()
+        
+        // 버튼 상태 업데이트
+        updateButtonStates()
     }
 
     private fun updateMapWithMarkers() {

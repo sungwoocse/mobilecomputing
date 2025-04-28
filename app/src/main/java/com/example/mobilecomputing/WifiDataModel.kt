@@ -97,6 +97,18 @@ class WifiDataManager(private val context: Context) {
         }
         persistData()
     }
+    
+    // 모든 WiFi 데이터 삭제
+    fun deleteAllData(): Boolean {
+        try {
+            locationDataList.clear()
+            persistData()
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
+    }
 
     // 특정 위치의 데이터 가져오기
     fun getDataAtPosition(position: PointF): List<WifiLocationData> {
@@ -125,6 +137,11 @@ class WifiDataManager(private val context: Context) {
         }
 
         return result
+    }
+    
+    // 저장된 데이터 개수 확인
+    fun getDataCount(): Int {
+        return locationDataList.size
     }
     
     // 개선된 위치 추정 함수

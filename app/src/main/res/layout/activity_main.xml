@@ -59,12 +59,27 @@
             android:enabled="false" />
     </LinearLayout>
 
-    <Button
-        android:id="@+id/exportButton"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Export Data"
-        android:enabled="false" />
+        android:orientation="horizontal">
+        
+        <Button
+            android:id="@+id/exportButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Export Data"
+            android:enabled="false" />
+            
+        <Button
+            android:id="@+id/deleteDataButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Delete Data"
+            android:enabled="false" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/coordinateTextView"
