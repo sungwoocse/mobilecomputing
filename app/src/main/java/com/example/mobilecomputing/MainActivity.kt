@@ -39,6 +39,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var wifiScanner: WifiScanHelper
     private lateinit var dataStorage: WifiDataManager
+    private lateinit var sensorFusionManager: SensorFusionManager
+    private var lastWiFiPosition: PointF? = null
+    private var lastSensorPosition: Triple<Float, Float, Float>? = null
 
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 1000
@@ -54,6 +57,8 @@ class MainActivity : AppCompatActivity() {
             // Initialize helpers
             wifiScanner = WifiScanHelper(this)
             dataStorage = WifiDataManager(this)
+            sensorFusionManager = SensorFusionManager(this)
+            sensorFusionManager.initialize()
 
             // Debug logging
             android.util.Log.d("MainActivity", "Utilities initialized")
@@ -457,102 +462,78 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Filter for better quality signals
+        // WiFi 기반 위치 추정
         val usableScanResults = scanResults.filter { it.level > -87 }
+        val accessPointReadings = usableScanResults.map { WifiInfo.fromScanResult(it) }
+        val wifiPositioningResult = dataStorage.estimateLocation(accessPointReadings)
         
-        if (usableScanResults.size < 3) {
-            Toast.makeText(this, "Not enough WiFi signals for accurate positioning (${usableScanResults.size}/3)", 
-                Toast.LENGTH_SHORT).show()
-            return
+        // 센서 기반 위치 추정
+        val sensorPosition = sensorFusionManager.getCurrentPosition()
+        
+        // 위치 융합
+        val finalPosition = if (wifiPositioningResult != null && lastWiFiPosition != null) {
+            // WiFi 위치와 센서 위치를 융합
+            val wifiWeight = wifiPositioningResult.accuracyLevel
+            val sensorWeight = 1.0 - wifiWeight
+            
+            val (sensorX, sensorY, _) = sensorPosition
+            val lastSensorPos = lastSensorPosition
+            
+            // 센서 이동량 계산
+            val sensorDeltaX = if (lastSensorPos != null) sensorX - lastSensorPos.first else 0f
+            val sensorDeltaY = if (lastSensorPos != null) sensorY - lastSensorPos.second else 0f
+            
+            // 최종 위치 계산
+            val finalX = wifiPositioningResult.mapPoint.x * wifiWeight + 
+                        (lastWiFiPosition!!.x + sensorDeltaX) * sensorWeight
+            val finalY = wifiPositioningResult.mapPoint.y * wifiWeight + 
+                        (lastWiFiPosition!!.y + sensorDeltaY) * sensorWeight
+            
+            PointF(finalX.toFloat(), finalY.toFloat())
+        } else {
+            // WiFi 위치만 사용
+            wifiPositioningResult?.mapPoint
         }
         
-        // Transform scan results to our data model
-        val accessPointReadings = usableScanResults.map { WifiInfo.fromScanResult(it) }
-        
-        // Show working indicator
-        val processingDialog = AlertDialog.Builder(this)
-            .setTitle("Calculating Position...")
-            .setMessage("Processing ${usableScanResults.size} WiFi networks")
-            .setCancelable(false)
-            .create()
-        
-        processingDialog.show()
-        
-        // Background processing thread
-        Thread {
-            // Execute positioning algorithm
-            val positioningOutput = dataStorage.estimateLocation(accessPointReadings)
+        // 위치 업데이트
+        if (finalPosition != null) {
+            lastWiFiPosition = finalPosition
+            lastSensorPosition = sensorPosition
             
-            // UI thread for display
-            runOnUiThread {
-                processingDialog.dismiss()
-                
-                if (positioningOutput != null) {
-                    // Store the calculated position
-                    markedLocation = positioningOutput.mapPoint
-                    
-                    // Format display based on accuracy
-                    val accuracyPercentage = (positioningOutput.accuracyLevel * 100).roundToInt()
-                    val accuracyIndicator = when {
-                        accuracyPercentage >= 75 -> "High Accuracy"
-                        accuracyPercentage >= 50 -> "Medium Accuracy"
-                        accuracyPercentage >= 25 -> "Low Accuracy"
-                        else -> "Very Low Accuracy (Approximate Only)"
-                    }
-                    
-                    val indicatorColor = when {
-                        accuracyPercentage >= 75 -> Color.parseColor("#4CAF50") // Green
-                        accuracyPercentage >= 50 -> Color.parseColor("#FFC107") // Yellow
-                        accuracyPercentage >= 25 -> Color.parseColor("#FF9800") // Orange
-                        else -> Color.parseColor("#F44336") // Red
-                    }
-                    
-                    // Format position text
-                    val locationText = "(${String.format("%.2f", positioningOutput.mapPoint.x)}, " +
-                            "${String.format("%.2f", positioningOutput.mapPoint.y)})"
-                    
-                    // Build rich text with colored accuracy indicator
-                    val displayText = "$locationText - $accuracyIndicator ($accuracyPercentage%)"
-                    val formattedText = android.text.SpannableString(displayText)
-                    formattedText.setSpan(
-                        android.text.style.ForegroundColorSpan(indicatorColor),
-                        locationText.length + 3, displayText.length,
-                        android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                    
-                    tvPositionInfo.text = formattedText
-                    
-                    // Update visual map markers
-                    updateMapWithMarkers()
-                    
-                    // Show results dialog with details
-                    AlertDialog.Builder(this)
-                        .setTitle("Position Determined")
-                        .setMessage("Your location: $locationText\nAccuracy: $accuracyPercentage%\n\n" +
-                                "Networks analyzed: ${usableScanResults.size}\n" +
-                                "Reference points: ${dataStorage.getFingerprintCount()}\n\n" +
-                                "Note: For better accuracy, collect more reference data in nearby areas.")
-                        .setPositiveButton("OK", null)
-                        .show()
-                } else {
-                    // Positioning failed
-                    val uniqueNetworks = accessPointReadings.groupBy { it.bssid }.size
-                    val mappedLocations = dataStorage.getSampledLocations().size
-                    
-                    AlertDialog.Builder(this)
-                        .setTitle("Positioning Failed")
-                        .setMessage("Unable to determine your current location.\n\n" +
-                                "Unique networks found: ${uniqueNetworks}\n" +
-                                "Mapped reference points: ${mappedLocations}\n\n" +
-                                "Troubleshooting:\n" +
-                                "1. Collect fingerprint data from more locations\n" +
-                                "2. Verify WiFi is enabled\n" +
-                                "3. Ensure you've collected data near your current position")
-                        .setPositiveButton("OK", null)
-                        .show()
-                }
-            }
-        }.start()
+            // UI 업데이트
+            updatePositionDisplay(finalPosition, wifiPositioningResult?.accuracyLevel ?: 0.5)
+        } else {
+            showPositioningFailed(accessPointReadings.size)
+        }
+    }
+
+    private fun updatePositionDisplay(position: PointF, accuracy: Double) {
+        val accuracyPercentage = (accuracy * 100).roundToInt()
+        val accuracyIndicator = when {
+            accuracyPercentage >= 75 -> "High Accuracy"
+            accuracyPercentage >= 50 -> "Medium Accuracy"
+            accuracyPercentage >= 25 -> "Low Accuracy"
+            else -> "Very Low Accuracy (Approximate Only)"
+        }
+        
+        val locationText = "(${String.format("%.2f", position.x)}, ${String.format("%.2f", position.y)})"
+        val displayText = "$locationText - $accuracyIndicator ($accuracyPercentage%)"
+        
+        tvPositionInfo.text = displayText
+        updateMapWithMarkers()
+    }
+
+    private fun showPositioningFailed(networkCount: Int) {
+        AlertDialog.Builder(this)
+            .setTitle("Positioning Failed")
+            .setMessage("Unable to determine your current location.\n\n" +
+                    "Unique networks found: $networkCount\n" +
+                    "Troubleshooting:\n" +
+                    "1. Collect fingerprint data from more locations\n" +
+                    "2. Verify WiFi is enabled\n" +
+                    "3. Ensure you've collected data near your current position")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun exportFingerprints() {
@@ -669,5 +650,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        sensorFusionManager.unregisterSensors()
     }
 }
