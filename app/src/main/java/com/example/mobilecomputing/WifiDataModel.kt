@@ -148,144 +148,287 @@ class WifiDataManager(private val appContext: Context) {
         return fingerprintRecords.size
     }
     
-    // Enhanced positioning algorithm with WKNN implementation
+    // 개선된 위치 추정 알고리즘 (핑거프린팅 기반 삼각측량)
     fun estimateLocation(currentReadings: List<WifiInfo>): PositioningResult? {
-        val referenceData = getAllFingerprints()
-        if (referenceData.isEmpty()) {
+        val savedFingerprints = getAllFingerprints()
+        if (savedFingerprints.isEmpty()) {
             return null
         }
 
-        // Filter weak signals for better quality
-        val strongSignals = currentReadings.filter { it.signalDbm > signalCutoff }
-        if (strongSignals.isEmpty()) {
+        // 약한 신호는 필터링하되, 삼각측량을 위해 충분한 AP 확보
+        val usableSignals = currentReadings.filter { it.signalDbm > -90 }
+        if (usableSignals.isEmpty()) {
             return null
         }
 
-        // Create lookup map for current APs
-        val visibleApMap = strongSignals.associateBy { it.bssid }
+        // 현재 스캔한 AP 목록 맵으로 변환
+        val currentApMap = usableSignals.associateBy { it.bssid }
         
-        // Calculate similarity scores for all reference points
-        val locationMatches = mutableListOf<Pair<PointF, Double>>()
+        // 모든 참조점과의 유사도 계산을 위한 리스트
+        val positionSimilarities = mutableListOf<Pair<PointF, Double>>()
         
-        for (refPoint in referenceData) {
-            // Get only strong signals from reference data
-            val refPointSignals = refPoint.accessPoints.filter { it.signalDbm > signalCutoff }
-            
-            if (refPointSignals.isEmpty()) continue
-            
-            // Enhanced scoring system
-            var matchScore = 0.0
-            var weightTotal = 0.0
-            var commonApCount = 0
-            
-            for (refAp in refPointSignals) {
-                val currAp = visibleApMap[refAp.bssid] ?: continue
-                
-                // Count common APs
-                commonApCount++
-                
-                // Calculate exponential signal similarity
-                val signalDelta = Math.abs(currAp.signalDbm - refAp.signalDbm)
-                // Higher similarity for smaller differences
-                val signalMatch = Math.exp(-signalDelta / 15.0)
-                
-                // Non-linear weighting for signal strength
-                val signalWeight = calculateNonLinearWeight(refAp.signalDbm)
-                
-                // Weighted scoring
-                matchScore += signalMatch * signalWeight
-                weightTotal += signalWeight
-            }
-            
-            // Only include locations with sufficient common APs
-            val minRequiredAps = Math.min(3, strongSignals.size / 2)
-            if (commonApCount >= minRequiredAps && weightTotal > 0) {
-                // Normalize and add AP count bonus
-                val normalizedMatch = matchScore / weightTotal
-                val apBonus = Math.min(1.0, commonApCount / 10.0)
-                val finalMatchScore = normalizedMatch * (0.7 + 0.3 * apBonus)
-                
-                locationMatches.add(Pair(refPoint.mapPoint, finalMatchScore))
+        // AP 특이성 분석 (고유한 AP일수록 높은 가중치 부여)
+        val detectedBssids = usableSignals.map { it.bssid }.toSet()
+        val apLocationCounts = mutableMapOf<String, Int>()
+        for (bssid in detectedBssids) {
+            // 각 AP가 몇 개의 참조 위치에서 발견되는지 계산
+            apLocationCounts[bssid] = savedFingerprints.count { refSpot ->
+                refSpot.accessPoints.any { it.bssid == bssid }
             }
         }
         
-        // Check if we have any matches
-        if (locationMatches.isEmpty()) {
+        // 특이성 역수 가중치 계산 - 희소한 AP일수록 가중치 증가
+        val apUniquenessFactors = mutableMapOf<String, Double>()
+        for (bssid in detectedBssids) {
+            val spotCount = apLocationCounts[bssid] ?: 0
+            if (spotCount > 0) {
+                // 루트 역수 가중치로 특이성 계산
+                apUniquenessFactors[bssid] = 1.0 / Math.sqrt(spotCount.toDouble())
+            } else {
+                apUniquenessFactors[bssid] = 1.0
+            }
+        }
+        
+        for (savedSpot in savedFingerprints) {
+            // 참조 지점의 유효한 신호들만 사용
+            val spotApData = savedSpot.accessPoints.filter { it.signalDbm > -90 }
+            
+            if (spotApData.isEmpty()) continue
+            
+            // 유사도 점수 계산 시스템
+            var matchPoints = 0.0
+            var totalWeightSum = 0.0
+            var overlappingApCount = 0
+            var rssiSum = 0.0
+            var bestApMatchQuality = 0.0
+            
+            for (savedAp in spotApData) {
+                val currentAp = currentApMap[savedAp.bssid] ?: continue
+                
+                // 공통 AP 카운트
+                overlappingApCount++
+                
+                // 신호 강도 차이 기반 지수 감쇠 유사도
+                val rssiDifference = Math.abs(currentAp.signalDbm - savedAp.signalDbm)
+                
+                // 작은 차이는 점진적으로 감소, 큰 차이는 급격히 감소하는 지수 함수
+                val apMatchQuality = Math.exp(-rssiDifference / 20.0)
+                
+                // 이 참조점에서 가장 잘 매칭된 AP 트래킹
+                if (apMatchQuality > bestApMatchQuality) {
+                    bestApMatchQuality = apMatchQuality
+                }
+                
+                // 신호 강도 기반 가중치 - 강한 신호가 더 신뢰성 높음
+                val rssiWeight = calculateNonLinearWeight(savedAp.signalDbm)
+                
+                // AP 특이성 가중치 적용 - 희소한 AP는 위치 특정에 더 중요
+                val uniquenessFactor = apUniquenessFactors[savedAp.bssid] ?: 1.0
+                
+                // 평균 신호 강도 계산용
+                rssiSum += savedAp.signalDbm
+                
+                // 신호 강도와 특이성을 결합한 최종 가중치
+                val apImportanceWeight = rssiWeight * uniquenessFactor
+                
+                // 가중 점수 누적
+                matchPoints += apMatchQuality * apImportanceWeight
+                totalWeightSum += apImportanceWeight
+            }
+            
+            // 최소 필요 AP 수 (유연한 임계값)
+            val requiredMinApCount = Math.max(2, Math.min(3, usableSignals.size / 3))
+            
+            if (overlappingApCount >= requiredMinApCount && totalWeightSum > 0) {
+                // 가중치로 정규화
+                val normalizedScore = matchPoints / totalWeightSum
+                
+                // AP 커버리지 비율 계산 (많을수록 좋음)
+                val apCoverageRate = overlappingApCount.toDouble() / usableSignals.size
+                
+                // 신호 품질 보너스 (강한 신호일수록 신뢰도 증가)
+                val averageRssi = if (overlappingApCount > 0) 
+                    rssiSum / overlappingApCount else -90.0
+                val signalStrengthBonus = Math.max(0.0, Math.min(0.3, (averageRssi + 100) / 100))
+                
+                // 다양한 요소 결합한 최종 점수 계산
+                // - 기본 유사도 점수 (60%)
+                // - 최상위 AP 매치 품질 (20%)
+                // - AP 커버리지 보너스 (10%)
+                // - 신호 강도 보너스 (10%)
+                val finalScore = (normalizedScore * 0.6) + 
+                               (bestApMatchQuality * 0.2) +
+                               (apCoverageRate * 0.1) +
+                               signalStrengthBonus
+                
+                positionSimilarities.add(Pair(savedSpot.mapPoint, finalScore))
+            }
+        }
+        
+        // 매칭 결과 없음 처리
+        if (positionSimilarities.isEmpty()) {
             return null
         }
         
-        // Sort by match quality
-        locationMatches.sortByDescending { it.second }
+        // 유사도 점수로 정렬
+        positionSimilarities.sortByDescending { it.second }
         
-        // Apply WKNN algorithm with top K points
-        val k = Math.min(3, locationMatches.size)
+        // 동적 K-최근접 이웃 알고리즘 - 점수가 비슷한 위치만 선택
+        val highestScore = positionSimilarities.first().second
+        val autoSelectedK = positionSimilarities.takeWhile { it.second > highestScore * 0.7 }.size
+        val optimalK = Math.max(2, Math.min(autoSelectedK, 5)) // 2~5개 이웃으로 제한
         
-        // Calculate weighted average position
-        var xWeightedSum = 0.0
-        var yWeightedSum = 0.0
-        var totalWeight = 0.0
+        // 가중 평균 위치 계산
+        var weightedXSum = 0.0
+        var weightedYSum = 0.0
+        var weightSum = 0.0
         
-        for (i in 0 until k) {
-            val (location, score) = locationMatches[i]
-            // Square scores to emphasize better matches
-            val weight = score * score
+        for (i in 0 until Math.min(optimalK, positionSimilarities.size)) {
+            val (spotPosition, similarityScore) = positionSimilarities[i]
             
-            xWeightedSum += location.x * weight
-            yWeightedSum += location.y * weight
-            totalWeight += weight
+            // 세제곱 가중치로 우수 매치 강조 (위치 평균이 하위 매치에 너무 영향받지 않도록)
+            val cubicWeight = Math.pow(similarityScore, 3.0)
+            
+            weightedXSum += spotPosition.x * cubicWeight
+            weightedYSum += spotPosition.y * cubicWeight
+            weightSum += cubicWeight
         }
         
-        // Calculate final position
-        val estimatedLocation = if (totalWeight > 0) {
+        // 최종 위치 계산
+        val estimatedPosition = if (weightSum > 0) {
             PointF(
-                (xWeightedSum / totalWeight).toFloat(),
-                (yWeightedSum / totalWeight).toFloat()
+                (weightedXSum / weightSum).toFloat(),
+                (weightedYSum / weightSum).toFloat()
             )
         } else {
-            // Fallback to best match if weights are invalid
-            locationMatches.first().first
+            // 가중치 계산 실패시 가장 유사한 위치 사용
+            positionSimilarities.first().first
         }
         
-        // Calculate accuracy metric
-        val accuracyMetric = if (locationMatches.size > 1) {
-            val bestScore = locationMatches[0].second
-            val secondBestScore = locationMatches[1].second
+        // 개선된 정확도 측정 지표 계산
+        val accuracyRating = if (positionSimilarities.size > 1) {
+            val topScore = positionSimilarities[0].second
+            val runnerUpScore = positionSimilarities[1].second
             
-            // Score differential component
-            val scoreDifferential = (bestScore - secondBestScore) / bestScore
+            // 점수 격차 지표 - 격차가 클수록 확실한 매치
+            val scoreSeparation = (topScore - runnerUpScore) / topScore
             
-            // Signal strength component
-            val signalQualityFactor = Math.min(1.0, strongSignals.size / 15.0)
+            // 신호 품질 지표 - AP 개수와 신호 강도 반영
+            val apQuantityFactor = Math.min(1.0, usableSignals.size / 12.0)
+            val avgDbm = usableSignals.map { it.signalDbm }.average()
+            val signalQualityMetric = Math.max(0.0, Math.min(1.0, (avgDbm + 100) / 40))
             
-            // Combined accuracy metric (0.0 - 1.0)
-            (0.5 * scoreDifferential + 0.3 * signalQualityFactor + 0.2 * bestScore).coerceIn(0.0, 1.0)
+            // 위치 군집성 - 상위 매치들이 얼마나 모여있는지 (가까울수록 신뢰도 높음)
+            val topPositions = positionSimilarities.take(Math.min(3, positionSimilarities.size)).map { it.first }
+            var distanceSum = 0.0
+            var pairCount = 0
+            
+            for (i in 0 until topPositions.size - 1) {
+                for (j in i + 1 until topPositions.size) {
+                    val xDiff = topPositions[i].x - topPositions[j].x
+                    val yDiff = topPositions[i].y - topPositions[j].y
+                    val pointDistance = Math.sqrt((xDiff * xDiff + yDiff * yDiff).toDouble())
+                    distanceSum += pointDistance
+                    pairCount++
+                }
+            }
+            
+            val positionClusterFactor = if (pairCount > 0) {
+                val meanPairDistance = distanceSum / pairCount
+                Math.max(0.0, 1.0 - meanPairDistance * 2.0) // 0.5 거리 = 0 안정성
+            } else {
+                0.5 // 계산 불가시 중간값
+            }
+            
+            // 정확도 지표 종합 (0.0-1.0 범위)
+            (0.3 * scoreSeparation + 
+             0.3 * apQuantityFactor + 
+             0.2 * signalQualityMetric + 
+             0.2 * positionClusterFactor).coerceIn(0.0, 1.0)
         } else {
-            // Medium confidence for single match
-            0.5
+            // 단일 매치시 낮은-중간 신뢰도
+            0.4
         }
         
         return PositioningResult(
-            mapPoint = estimatedLocation,
-            matchScore = locationMatches.first().second,
-            accuracyLevel = accuracyMetric
+            mapPoint = estimatedPosition,
+            matchScore = positionSimilarities.first().second,
+            accuracyLevel = accuracyRating
         )
     }
     
-    // Signal importance weighting using sigmoid curve
-    private fun calculateNonLinearWeight(signalStrength: Int): Double {
-        // Sigmoid-based non-linear weighting
-        // Strong signals (~-50dBm): high weight (~1.0)
+    // Signal strength based sigmoid weight calculation function
+    private fun calculateNonLinearWeight(rssiValue: Int): Double {
+        // Signal strength weight ranges:
+        // Very strong signals (>-60dBm): very high weight (~0.95-1.0)
+        // Strong signals (~-65dBm): high weight (~0.8-0.9)
         // Medium signals (~-75dBm): medium weight (~0.5)
-        // Weak signals (~-90dBm): low weight (~0.1)
+        // Weak signals (~-85dBm): low weight (~0.2-0.3)
+        // Very weak signals (<-90dBm): very low weight (~0.1)
         
-        val centerPoint = -75.0 // Inflection point
-        val curveSlope = 0.15 // Controls curve steepness
+        val midpoint = -75.0 // Sigmoid curve inflection point
+        val slopeCoef = 0.2 // Rate of weight change by signal difference
         
-        // Apply sigmoid: 1 / (1 + e^(-slope * (signal - center)))
-        val weightCurve = 1.0 / (1.0 + Math.exp(-curveSlope * (signalStrength - centerPoint)))
+        // Sigmoid function: 1 / (1 + e^(-slope * (signal - midpoint)))
+        val calcWeight = 1.0 / (1.0 + Math.exp(-slopeCoef * (rssiValue - midpoint)))
         
-        // Scale to 0.1-1.0 range
-        return 0.1 + 0.9 * weightCurve
+        // Scale to 0.05-1.0 range to emphasize signal strength impact
+        return 0.05 + 0.95 * calcWeight
+    }
+    
+    // Calculate similarity between two signal fingerprints
+    private fun computeFingerprintSimilarity(
+        currentSignals: Map<String, Int>,
+        referencePoint: WifiSpotCapture,
+        apImportance: Map<String, Double>
+    ): Double {
+        var weightedDistSum = 0.0
+        var weightSum = 0.0
+        var commonApCount = 0
+        
+        // Calculate for each AP in reference point
+        for (refAp in referencePoint.accessPoints) {
+            // Exclude extremely weak signals
+            if (refAp.signalDbm < -90) continue
+            
+            // Check if this AP is also found in current scan
+            val currentRssi = currentSignals[refAp.bssid]
+            if (currentRssi != null) {
+                commonApCount++
+                
+                // Calculate squared signal strength difference
+                val rssiDiff = (currentRssi - refAp.signalDbm).toDouble()
+                val squaredDiff = rssiDiff * rssiDiff
+                
+                // Apply AP rarity weight factor
+                val apRarity = apImportance[refAp.bssid] ?: 1.0
+                
+                // Signal strength reliability weight
+                val signalReliability = calculateNonLinearWeight(refAp.signalDbm)
+                
+                // Combined weight factor
+                val combinedWeight = signalReliability * apRarity
+                
+                // Weighted distance calculation
+                weightedDistSum += squaredDiff * combinedWeight
+                weightSum += combinedWeight
+            }
+        }
+        
+        // Return maximum distance if no matching APs
+        if (commonApCount == 0 || weightSum == 0.0) {
+            return Double.MAX_VALUE
+        }
+        
+        // Final distance normalized by weights
+        val normalizedDist = Math.sqrt(weightedDistSum / weightSum)
+        
+        // Apply penalty for missing APs
+        val matchRatio = commonApCount.toDouble() / 
+                       Math.min(referencePoint.accessPoints.size, currentSignals.size)
+        val missingPenalty = 1.0 + Math.max(0.0, 1.0 - matchRatio) * 2.0
+        
+        return normalizedDist * missingPenalty
     }
     
     // Signal similarity with adaptive importance based on signal strength
