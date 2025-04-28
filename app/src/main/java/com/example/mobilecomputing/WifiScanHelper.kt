@@ -11,13 +11,14 @@ import android.os.Looper
 import android.util.Log
 
 class WifiScanHelper(private val appContext: Context) {
-    private val wifiController = appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    private var resultHandler: ((List<ScanResult>) -> Unit)? = null
-    private var failedAttempts = 0
-    private val maxRetryCount = 3
+    private val wifiManager = appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    private var scanCallback: ((List<ScanResult>) -> Unit)? = null
+    private var consecutiveScanFailures = 0
+    private val maxScanRetries = 3
+    private val context = appContext
     
     // Signal quality thresholds
-    private val qualityLevels = mapOf(
+    private val signalStrengthRanges = mapOf(
         "Excellent" to -55,
         "Good" to -70,
         "Fair" to -80,

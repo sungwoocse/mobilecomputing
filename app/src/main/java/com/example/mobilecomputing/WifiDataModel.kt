@@ -65,9 +65,9 @@ class WifiDataManager(private val appContext: Context) {
     private var fingerprintRecords: MutableList<WifiSpotCapture> = mutableListOf()
     
     // Signal propagation parameters
-    private val indoorPathLoss = 3.0 // Path loss exponent for indoor spaces
-    private val calibrationDist = 1.0 // Reference distance in meters
-    private val baselineSignal = -40.0 // Reference signal at 1m (dBm)
+    private val pathLossExponent = 3.0 // Path loss exponent for indoor spaces
+    private val referenceDistance = 1.0 // Reference distance in meters
+    private val referenceLevel = -40 // Reference signal at 1m (dBm)
     
     // Quality filtering threshold
     private val signalCutoff = -85 // Filter weak signals below this threshold
