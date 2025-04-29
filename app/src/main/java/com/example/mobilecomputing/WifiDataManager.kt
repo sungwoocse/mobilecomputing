@@ -208,22 +208,22 @@ class WifiDataManager(private val appContext: Context) {
                         // AP 희소성 가중치 적용
                         val rarityBonus = apRarityFactors[refAP.bssid] ?: 1.0
                         
-                        // 지수 감쇠 함수로 유사도 계산 (차이가 적을수록 높은 점수)
-                        val similarity = exp(-signalDiff / 10.0) * freqMatchBonus * signalStrengthWeight * rarityBonus
+                        // 지수 감쇠 함수로 유사도 계산 - 수정: 감쇠 계수 15.0으로 증가하여 차이에 더 관대하게
+                        val similarity = exp(-signalDiff / 15.0) * freqMatchBonus * signalStrengthWeight * rarityBonus
                         
                         matchScore += similarity
                         matchedAPCount++
                     }
                 }
                 
-                // 충분한 AP 매칭이 있는지 확인 (최소 2개로 완화)
-                if (matchedAPCount >= 2) {
+                // 충분한 AP 매칭이 있는지 확인 - 수정: 최소 1개로 완화
+                if (matchedAPCount >= 1) {
                     // 평균 유사도 점수 계산
                     val avgScore = matchScore / matchedAPCount
                     
-                    // AP 매칭 비율 보너스 (많을수록 좋음)
+                    // AP 매칭 비율 보너스 - 수정: 보너스 영향력 감소
                     val matchRatio = matchedAPCount.toDouble() / max(referenceAPs.size, stableAPs.size)
-                    val matchRatioBonus = 0.7 + (0.3 * matchRatio)
+                    val matchRatioBonus = 0.8 + (0.2 * matchRatio)
                     
                     // 평균 신호 편차 계산 (낮을수록 좋음)
                     val avgSignalDeviation = if (matchedAPCount > 0) totalSignalDeviation / matchedAPCount else Double.MAX_VALUE
@@ -240,8 +240,8 @@ class WifiDataManager(private val appContext: Context) {
                 }
             }
             
-            // 충분한 유사도가 있는 경우만 후보 위치로 추가 (임계값 낮춤)
-            if (bestLocationScore > 0.2) {
+            // 충분한 유사도가 있는 경우만 후보 위치로 추가 - 수정: 임계값 0.15로 낮춤
+            if (bestLocationScore > 0.15) {
                 locationSimilarities.add(Triple(location, bestLocationScore, apMatchCount))
             }
         }
@@ -254,10 +254,10 @@ class WifiDataManager(private val appContext: Context) {
             return null
         }
         
-        // 최적의 K값 선택 (동적으로 비슷한 점수의 위치만 사용)
+        // 최적의 K값 선택 - 수정: 유사도 임계값 0.55로 낮춤
         val topScore = locationSimilarities.first().second
         val significantMatches = locationSimilarities.takeWhile { 
-            it.second >= topScore * 0.65  // 유사도 임계값 완화 (0.7 -> 0.65)
+            it.second >= topScore * 0.55
         }
         
         // 최소 1개, 최대 6개 위치로 확장
@@ -266,7 +266,7 @@ class WifiDataManager(private val appContext: Context) {
             else -> locationSimilarities.take(min(4, locationSimilarities.size))
         }
         
-        // 가중 평균 위치 계산 (파워값 조정)
+        // 가중 평균 위치 계산 - 수정: 2승 함수로 가중치 완화
         var weightedXSum = 0.0
         var weightedYSum = 0.0
         var weightSum = 0.0
@@ -275,8 +275,8 @@ class WifiDataManager(private val appContext: Context) {
         val lastPositions = mutableListOf<PointF>()
         
         for ((pos, score, _) in matchesToUse) {
-            // 가중치 계산 (4승 함수로 높은 점수에 더 큰 가중치 - 3승에서 강화)
-            val weight = score.pow(4.0)
+            // 가중치 계산 - 수정: 2승 함수로 높은 점수에 적절한 가중치
+            val weight = score.pow(2.0)
             
             weightedXSum += pos.x * weight
             weightedYSum += pos.y * weight
