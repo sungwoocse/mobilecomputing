@@ -318,8 +318,19 @@ class WifiDataManager(private val appContext: Context) {
 
     // 안정적인 AP 선택 함수 개선 (최대 AP 수를 파라미터로 변경)
     private fun selectStableAPs(readings: List<WifiInfo>, maxApCount: Int = 10): List<WifiInfo> {
+        // 원하는 SSID만 필터링 (WUNIST_AAA_5G)
+        val targetSSID = "WUNIST_AAA_5G"
+        val filteredReadings = readings.filter { it.ssid == targetSSID }
+        
+        // 특정 SSID만 사용 (엄격 모드)
+        // 결과가 없으면 빈 리스트 반환 (다른 AP는 사용하지 않음)
+        if (filteredReadings.isEmpty()) {
+            Log.d("WifiDataManager", "No target SSID ($targetSSID) found - skipping positioning")
+            return emptyList()
+        }
+        
         // 신호 강도 기준으로 정렬
-        val sortedByStrength = readings.sortedByDescending { it.signalDbm }
+        val sortedByStrength = filteredReadings.sortedByDescending { it.signalDbm }
         
         // 중복 BSSID 제거 (MAC 주소가 같은 AP는 하나만 사용)
         val uniqueAPs = sortedByStrength.distinctBy { it.bssid }
@@ -331,9 +342,11 @@ class WifiDataManager(private val appContext: Context) {
         val reliableAPs = topAPs.filter { it.signalDbm > -85 }
         
         // 최소 2개 AP 확보 (없으면 상위 사용)
-        return if (reliableAPs.size >= 2) {
+        return if (reliableAPs.size >= 1) {  // 필요 AP 수를 1개로 낮춤 (더 유연하게)
+            Log.d("WifiDataManager", "Using ${reliableAPs.size} APs from target SSID")
             reliableAPs
         } else {
+            Log.d("WifiDataManager", "Using ${topAPs.size} APs from target SSID (weaker signals)")
             topAPs.take(min(2, topAPs.size))
         }
     }
