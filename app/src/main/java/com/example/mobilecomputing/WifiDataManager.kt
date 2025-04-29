@@ -162,11 +162,15 @@ class WifiDataManager(private val appContext: Context) {
 
         // 안정적인 AP 선택 (상위 15개로 확장)
         val stableAPs = selectStableAPs(usableSignals, 15)
+        if (stableAPs.isEmpty()) {
+            Log.d("WifiPositioning", "No stable APs found for positioning")
+            return null
+        }
         
         // 현재 AP 맵 생성 (빠른 검색용)
         val currentApMap = stableAPs.associateBy { it.bssid }
         
-        // AP 특이성 분석 (고유한 AP일수록 높은 가중치 부여)
+        // AP 특이성 분석 (고유한 AP일수록 높은 가중치 부여) - 가중치 추가 감소
         val apRarityFactors = calculateApRarityFactors(savedFingerprints, stableAPs)
         
         // 모든 참조 지점에 대한 유사도 계산
@@ -199,17 +203,17 @@ class WifiDataManager(private val appContext: Context) {
                         val signalDiff = abs(currAP.signalDbm - refAP.signalDbm)
                         totalSignalDeviation += signalDiff
                         
-                        // 주파수 대역 일치 보너스 (2.4GHz/5GHz 일치 시 더 높은 점수)
-                        val freqMatchBonus = if (isFrequencyBandMatch(currAP.freqChannel, refAP.freqChannel)) 1.2 else 1.0
+                        // 주파수 대역 일치 보너스 (2.4GHz/5GHz 일치 시 더 높은 점수) - 보너스 추가 감소
+                        val freqMatchBonus = if (isFrequencyBandMatch(currAP.freqChannel, refAP.freqChannel)) 1.05 else 1.0
                         
-                        // 강한 신호일수록 더 높은 가중치 (신호가 강할수록 신뢰성 높음)
+                        // 강한 신호일수록 더 높은 가중치 (신호가 강할수록 신뢰성 높음) - 가중치 추가 조정
                         val signalStrengthWeight = calculateSignalWeight(refAP.signalDbm)
                         
-                        // AP 희소성 가중치 적용
-                        val rarityBonus = apRarityFactors[refAP.bssid] ?: 1.0
+                        // AP 희소성 가중치 적용 - 가중치 추가 감소
+                        val rarityBonus = (apRarityFactors[refAP.bssid] ?: 1.0) * 0.7
                         
-                        // 지수 감쇠 함수로 유사도 계산 - 수정: 감쇠 계수 15.0으로 증가하여 차이에 더 관대하게
-                        val similarity = exp(-signalDiff / 15.0) * freqMatchBonus * signalStrengthWeight * rarityBonus
+                        // 지수 감쇠 함수로 유사도 계산 - 수정: 감쇠 계수 25.0으로 증가하여 차이에 더 관대하게
+                        val similarity = exp(-signalDiff / 25.0) * freqMatchBonus * signalStrengthWeight * rarityBonus
                         
                         matchScore += similarity
                         matchedAPCount++
@@ -221,15 +225,15 @@ class WifiDataManager(private val appContext: Context) {
                     // 평균 유사도 점수 계산
                     val avgScore = matchScore / matchedAPCount
                     
-                    // AP 매칭 비율 보너스 - 수정: 보너스 영향력 감소
+                    // AP 매칭 비율 보너스 - 수정: 보너스 영향력 추가 감소
                     val matchRatio = matchedAPCount.toDouble() / max(referenceAPs.size, stableAPs.size)
-                    val matchRatioBonus = 0.8 + (0.2 * matchRatio)
+                    val matchRatioBonus = 0.9 + (0.1 * matchRatio)
                     
                     // 평균 신호 편차 계산 (낮을수록 좋음)
                     val avgSignalDeviation = if (matchedAPCount > 0) totalSignalDeviation / matchedAPCount else Double.MAX_VALUE
                     
-                    // 총점 계산 - 신호 편차 정보 반영
-                    val totalScore = avgScore * matchRatioBonus * (1.0 + 0.5 * (1.0 - min(1.0, avgSignalDeviation / 30.0)))
+                    // 총점 계산 - 신호 편차 정보 반영 - 편차 영향력 추가 감소
+                    val totalScore = avgScore * matchRatioBonus * (1.0 + 0.2 * (1.0 - min(1.0, avgSignalDeviation / 30.0)))
                     
                     // 현재 위치의 최고 점수 갱신
                     if (totalScore > bestLocationScore) {
@@ -240,8 +244,8 @@ class WifiDataManager(private val appContext: Context) {
                 }
             }
             
-            // 충분한 유사도가 있는 경우만 후보 위치로 추가 - 수정: 임계값 0.15로 낮춤
-            if (bestLocationScore > 0.15) {
+            // 충분한 유사도가 있는 경우만 후보 위치로 추가 - 수정: 임계값 더 낮게 조정
+            if (bestLocationScore > 0.08) {
                 locationSimilarities.add(Triple(location, bestLocationScore, apMatchCount))
             }
         }
@@ -254,19 +258,19 @@ class WifiDataManager(private val appContext: Context) {
             return null
         }
         
-        // 최적의 K값 선택 - 수정: 유사도 임계값 0.55로 낮춤
+        // 최적의 K값 선택 - 수정: 유사도 임계값 더 낮게 조정
         val topScore = locationSimilarities.first().second
         val significantMatches = locationSimilarities.takeWhile { 
-            it.second >= topScore * 0.55
+            it.second >= topScore * 0.30
         }
         
-        // 최소 1개, 최대 6개 위치로 확장
+        // 최소 1개, 최대 10개 위치로 확장 - 더 많은 위치 고려
         val matchesToUse = when {
-            significantMatches.size > 1 -> significantMatches.take(6)
-            else -> locationSimilarities.take(min(4, locationSimilarities.size))
+            significantMatches.size > 1 -> significantMatches.take(10)
+            else -> locationSimilarities.take(min(6, locationSimilarities.size))
         }
         
-        // 가중 평균 위치 계산 - 수정: 2승 함수로 가중치 완화
+        // 가중 평균 위치 계산 - 수정: 1.2승 함수로 가중치 추가 완화
         var weightedXSum = 0.0
         var weightedYSum = 0.0
         var weightSum = 0.0
@@ -275,8 +279,8 @@ class WifiDataManager(private val appContext: Context) {
         val lastPositions = mutableListOf<PointF>()
         
         for ((pos, score, _) in matchesToUse) {
-            // 가중치 계산 - 수정: 2승 함수로 높은 점수에 적절한 가중치
-            val weight = score.pow(2.0)
+            // 가중치 계산 - 수정: 1.2승 함수로 높은 점수에 덜 민감하게
+            val weight = score.pow(1.2)
             
             weightedXSum += pos.x * weight
             weightedYSum += pos.y * weight
@@ -307,7 +311,8 @@ class WifiDataManager(private val appContext: Context) {
         
         // 디버그 로그
         Log.d("WifiPositioning", "Estimated position: $constrainedPosition, Accuracy: $accuracy")
-        Log.d("WifiPositioning", "Top matches: ${matchesToUse.take(3)}")
+        Log.d("WifiPositioning", "Considered ${matchesToUse.size} locations for positioning")
+        Log.d("WifiPositioning", "Top matches: ${matchesToUse.take(3).map { "(${it.first.x.format(2)}, ${it.first.y.format(2)}) - ${it.second.format(2)}" }}")
         
         return PositioningResult(
             mapPoint = constrainedPosition,
@@ -315,6 +320,12 @@ class WifiDataManager(private val appContext: Context) {
             accuracyLevel = accuracy
         )
     }
+
+    // Float 포맷팅 확장 함수
+    private fun Float.format(digits: Int) = String.format("%.${digits}f", this)
+    
+    // Double 포맷팅 확장 함수
+    private fun Double.format(digits: Int) = String.format("%.${digits}f", this)
 
     // 안정적인 AP 선택 함수 개선 (최대 AP 수를 파라미터로 변경)
     private fun selectStableAPs(readings: List<WifiInfo>, maxApCount: Int = 10): List<WifiInfo> {
@@ -329,6 +340,10 @@ class WifiDataManager(private val appContext: Context) {
             return emptyList()
         }
         
+        // 모든 관측에 대해 로깅 (디버깅용)
+        Log.d("WifiDataManager", "원본 AP 목록 (${readings.size}개): ${readings.map { it.ssid }.distinct().joinToString()}")
+        Log.d("WifiDataManager", "필터링된 AP 목록 (${filteredReadings.size}개): ${filteredReadings.map { "${it.ssid} (${it.signalDbm}dBm)" }.joinToString()}")
+        
         // 신호 강도 기준으로 정렬
         val sortedByStrength = filteredReadings.sortedByDescending { it.signalDbm }
         
@@ -341,8 +356,8 @@ class WifiDataManager(private val appContext: Context) {
         // 너무 약한 신호는 제외 (-85dBm 이하는 불안정)
         val reliableAPs = topAPs.filter { it.signalDbm > -85 }
         
-        // 최소 2개 AP 확보 (없으면 상위 사용)
-        return if (reliableAPs.size >= 1) {  // 필요 AP 수를 1개로 낮춤 (더 유연하게)
+        // 최소 1개 AP 확보 (없으면 상위 사용)
+        return if (reliableAPs.isNotEmpty()) {  // 필요 AP 수를 1개로 낮춤 (더 유연하게)
             Log.d("WifiDataManager", "Using ${reliableAPs.size} APs from target SSID")
             reliableAPs
         } else {
@@ -471,8 +486,24 @@ class WifiDataManager(private val appContext: Context) {
         val csv = StringBuilder()
         csv.append("x,y,timestamp,ssid,bssid,security,frequency,rssi\n")
         
+        // 필터링 적용
+        // 좌표당 고품질 AP 데이터만 CSV에 포함하도록 개선
+        // 이 부분은 이미 수집된 데이터에는 영향 없음
         for (record in fingerprintRecords) {
-            for (ap in record.accessPoints) {
+            // 각 좌표마다 원하는 SSID 필터링
+            val targetSSID = "WUNIST_AAA_5G"
+            val filteredAPs = record.accessPoints.filter { it.ssid == targetSSID }
+            
+            // 위치별 모든 AP 기록
+            val apsToExport = if (filteredAPs.isNotEmpty()) {
+                // 타겟 SSID가 있으면 해당 AP만 내보내기
+                filteredAPs
+            } else {
+                // 없으면 모든 AP 포함 (레거시 데이터 유지)
+                record.accessPoints
+            }
+            
+            for (ap in apsToExport) {
                 csv.append("${record.mapPoint.x},${record.mapPoint.y},${record.captureTime},")
                 csv.append("${ap.toCsvString()}\n")
             }

@@ -12,6 +12,7 @@ import android.net.Uri
 import android.net.wifi.ScanResult
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import android.view.MotionEvent
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
@@ -317,29 +318,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initiateDataCollection() {
-        // Fingerprinting interface
-        AlertDialog.Builder(this)
-            .setTitle("WiFi Fingerprint Collection")
-            .setMessage("Would you like to scan for networks at this reference point?")
-            .setPositiveButton("Scan") { _, _ ->
-                // Show scanning indicator
-                val scanProgressDialog = AlertDialog.Builder(this)
-                    .setTitle("Scanning Networks...")
-                    .setMessage("Detecting WiFi access points in range")
-                    .setCancelable(false)
-                    .create()
-                    
-                scanProgressDialog.show()
-                
-                // Trigger WiFi scan
-                wifiScanner.scanWifi { scanResults ->
-                    scanProgressDialog.dismiss()
-                    // Show discovered networks
-                    displayNetworkResults(scanResults)
+        // 현재 선택된 위치가 없으면 무시
+        val selectedPoint = markedLocation ?: return
+        
+        // Start a scan session
+        wifiScanner.scanWifi { scanResults ->
+            // 필터링 - WUNIST_AAA_5G 와이파이만 사용
+            val targetSSID = "WUNIST_AAA_5G"
+            val filteredResults = scanResults.filter { it.SSID == targetSSID }
+            
+            if (filteredResults.isEmpty()) {
+                // 타겟 와이파이가 감지되지 않으면 알림
+                runOnUiThread {
+                    Toast.makeText(this, "No $targetSSID WiFi detected. Data collection skipped.", Toast.LENGTH_LONG).show()
                 }
+                return@scanWifi
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            
+            // Convert the filtered scan results to our storage format
+            val apReadings = filteredResults.map { WifiInfo.fromScanResult(it) }
+            
+            // Save to storage
+            dataStorage.storeFingerprint(selectedPoint, apReadings)
+            
+            // Refresh visual markers
+            updateMapWithMarkers()
+            
+            // Show success feedback
+            val apCount = apReadings.size
+            val strongestAP = apReadings.maxByOrNull { it.signalDbm }
+            
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "Data collected at (${String.format("%.2f", selectedPoint.x)}, ${String.format("%.2f", selectedPoint.y)})\n" +
+                            "$apCount ${targetSSID} APs found, strongest: ${strongestAP?.signalDbm ?: 0} dBm",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            
+            // Log collection details
+            Log.d("DataCollection", "Collected $apCount ${targetSSID} APs at $selectedPoint")
+        }
     }
 
     private fun displayNetworkResults(scanResults: List<ScanResult>) {
