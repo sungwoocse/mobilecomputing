@@ -63,11 +63,36 @@ class SensorFusionManager(private val context: Context) {
     
     // 초기화
     fun initialize() {
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-        gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-        
-        registerSensors()
+        try {
+            // 센서 인스턴스 가져오기
+            accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+            gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+            
+            // 센서 사용 가능성 검사
+            val isSensorAvailable = accelerometer != null && magnetometer != null
+            
+            if (isSensorAvailable) {
+                // 센서 등록
+                registerSensors()
+                
+                // 센서 데이터 초기화
+                lastAccelerometer = FloatArray(3)
+                lastMagnetometer = FloatArray(3)
+                lastGyroscope = FloatArray(3)
+                orientation = FloatArray(3)
+                
+                // 로그 기록
+                android.util.Log.d("SensorFusion", "Sensors initialized successfully")
+            } else {
+                // 로그 기록
+                android.util.Log.e("SensorFusion", "Required sensors not available on this device")
+            }
+        } catch (e: Exception) {
+            // 예외 처리
+            android.util.Log.e("SensorFusion", "Error initializing sensors: ${e.message}")
+            e.printStackTrace()
+        }
     }
     
     // 센서 등록
@@ -98,13 +123,34 @@ class SensorFusionManager(private val context: Context) {
         
         val currentTime = System.currentTimeMillis()
         
+        // 동적 임계값 시스템 구현
+        val minMagnitude = 10.0  // 최소 임계값
+        val maxMagnitude = 15.0  // 최대 임계값
+        
+        // 사용자 활동 상태에 따라 임계값 조정
+        val activityThreshold = when {
+            magnitude > 14.0 -> maxMagnitude  // 달리기 또는 빠른 걸음
+            magnitude > 12.0 -> 11.5          // 보통 걸음
+            else -> minMagnitude              // 느린 걸음 또는 정지
+        }
+        
+        // 시간 간격 - 빠른 걸음을 감지하기 위해 더 짧은 간격 허용
+        val timeThreshold = when {
+            magnitude > 14.0 -> 250L  // 빠른 걸음
+            magnitude > 12.0 -> 300L  // 보통 걸음
+            else -> 400L              // 느린 걸음
+        }
+        
         // 걸음 감지 조건
-        if (magnitude > 11.0 && currentTime - lastStepTime > 300) {
+        if (magnitude > activityThreshold && currentTime - lastStepTime > timeThreshold) {
             stepCount++
             lastStepTime = currentTime
             
             // 위치 업데이트
             updatePosition()
+            
+            // 디버깅용 로그 (개발자 모드에서만)
+            android.util.Log.d("SensorFusion", "Step detected: $stepCount, Magnitude: $magnitude")
         }
     }
     
@@ -153,9 +199,18 @@ class SensorFusionManager(private val context: Context) {
     }
     
     // 위치 초기화
-    fun resetPosition(x: Float, y: Float) {
+    fun resetPosition(x: Float, y: Float, initialHeading: Float = 0f) {
         currentX = x
         currentY = y
+        currentHeading = initialHeading
         stepCount = 0
+        
+        // 로그 기록
+        android.util.Log.d("SensorFusion", "Position reset to ($x, $y, $initialHeading)")
+    }
+    
+    // 센서 가용성 확인
+    fun isSensorsAvailable(): Boolean {
+        return accelerometer != null && magnetometer != null
     }
 } 

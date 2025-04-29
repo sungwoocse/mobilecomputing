@@ -39,9 +39,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var wifiScanner: WifiScanHelper
     private lateinit var dataStorage: WifiDataManager
-    private lateinit var sensorFusionManager: SensorFusionManager
     private var lastWiFiPosition: PointF? = null
-    private var lastSensorPosition: Triple<Float, Float, Float>? = null
 
     private val PERMISSION_REQUEST_CODE = 123
     private val IMAGE_PICK_CODE = 1000
@@ -57,8 +55,10 @@ class MainActivity : AppCompatActivity() {
             // Initialize helpers
             wifiScanner = WifiScanHelper(this)
             dataStorage = WifiDataManager(this)
-            sensorFusionManager = SensorFusionManager(this)
-            sensorFusionManager.initialize()
+            
+            // 센서 초기화는 비활성화 (WiFi 위치만 사용)
+            // sensorFusionManager = SensorFusionManager(this)
+            // sensorFusionManager.initialize()
 
             // Debug logging
             android.util.Log.d("MainActivity", "Utilities initialized")
@@ -462,65 +462,93 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // WiFi 기반 위치 추정
-        val usableScanResults = scanResults.filter { it.level > -87 }
-        val accessPointReadings = usableScanResults.map { WifiInfo.fromScanResult(it) }
-        val wifiPositioningResult = dataStorage.estimateLocation(accessPointReadings)
+        // Show working indicator
+        val processingDialog = AlertDialog.Builder(this)
+            .setTitle("Calculating Position...")
+            .setMessage("Processing WiFi data...")
+            .setCancelable(false)
+            .create()
         
-        // 센서 기반 위치 추정
-        val sensorPosition = sensorFusionManager.getCurrentPosition()
-        
-        // 위치 융합
-        val finalPosition = if (wifiPositioningResult != null && lastWiFiPosition != null) {
-            // WiFi 위치와 센서 위치를 융합
-            val wifiWeight = wifiPositioningResult.accuracyLevel
-            val sensorWeight = 1.0 - wifiWeight
-            
-            val (sensorX, sensorY, _) = sensorPosition
-            val lastSensorPos = lastSensorPosition
-            
-            // 센서 이동량 계산
-            val sensorDeltaX = if (lastSensorPos != null) sensorX - lastSensorPos.first else 0f
-            val sensorDeltaY = if (lastSensorPos != null) sensorY - lastSensorPos.second else 0f
-            
-            // 최종 위치 계산
-            val finalX = wifiPositioningResult.mapPoint.x * wifiWeight + 
-                        (lastWiFiPosition!!.x + sensorDeltaX) * sensorWeight
-            val finalY = wifiPositioningResult.mapPoint.y * wifiWeight + 
-                        (lastWiFiPosition!!.y + sensorDeltaY) * sensorWeight
-            
-            PointF(finalX.toFloat(), finalY.toFloat())
-        } else {
-            // WiFi 위치만 사용
-            wifiPositioningResult?.mapPoint
-        }
-        
-        // 위치 업데이트
-        if (finalPosition != null) {
-            lastWiFiPosition = finalPosition
-            lastSensorPosition = sensorPosition
-            
-            // UI 업데이트
-            updatePositionDisplay(finalPosition, wifiPositioningResult?.accuracyLevel ?: 0.5)
-        } else {
-            showPositioningFailed(accessPointReadings.size)
-        }
+        processingDialog.show()
+
+        // Background processing thread
+        Thread {
+            try {
+                // 필터링 기준 완화 (더 많은 AP 사용)
+                val accessPointReadings = scanResults.map { WifiInfo.fromScanResult(it) }
+                
+                // AP 정보 로깅
+                android.util.Log.d("WiFiData", "Detected ${accessPointReadings.size} APs")
+                accessPointReadings.sortedByDescending { it.signalDbm }.take(5).forEach { ap ->
+                    android.util.Log.d("WiFiData", "${ap.ssid}(${ap.bssid}): ${ap.signalDbm}dBm, ${ap.freqChannel}MHz")
+                }
+                
+                // 위치 추정 실행
+                val wifiPositioningResult = dataStorage.estimateLocation(accessPointReadings)
+                
+                runOnUiThread {
+                    processingDialog.dismiss()
+                    
+                    // 위치 업데이트
+                    if (wifiPositioningResult != null) {
+                        // 최종 위치 (센서 퓨전 비활성화, WiFi 위치만 사용)
+                        val finalPosition = wifiPositioningResult.mapPoint
+                        
+                        // 현재 위치 표시를 위해 markedLocation 업데이트
+                        markedLocation = finalPosition
+                        
+                        // 다음 계산을 위해 현재 위치 저장
+                        lastWiFiPosition = finalPosition
+                        
+                        // UI 업데이트
+                        val accuracyPercentage = (wifiPositioningResult.accuracyLevel * 100).roundToInt()
+                        val accuracyIndicator = when {
+                            accuracyPercentage >= 75 -> "High Accuracy"
+                            accuracyPercentage >= 50 -> "Medium Accuracy"
+                            accuracyPercentage >= 25 -> "Low Accuracy"
+                            else -> "Low Accuracy"
+                        }
+                        
+                        val locationText = "(${String.format("%.2f", finalPosition.x)}, ${String.format("%.2f", finalPosition.y)})"
+                        val displayText = "$locationText - $accuracyIndicator ($accuracyPercentage%)"
+                        
+                        tvPositionInfo.text = displayText
+                        
+                        // 지도에 위치 표시 업데이트
+                        updateMapWithMarkers()
+                        
+                        // 추가 정보 표시
+                        val score = String.format("%.2f", wifiPositioningResult.matchScore)
+                        android.util.Log.d("Positioning", "Final position: $finalPosition, Score: $score, Accuracy: $accuracyPercentage%")
+                        
+                        // 위치 정보 표시
+                        showPositioningSuccess(finalPosition, accuracyPercentage, accessPointReadings.size)
+                    } else {
+                        showPositioningFailed(accessPointReadings.size)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    processingDialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    e.printStackTrace()
+                }
+            }
+        }.start()
     }
 
-    private fun updatePositionDisplay(position: PointF, accuracy: Double) {
-        val accuracyPercentage = (accuracy * 100).roundToInt()
-        val accuracyIndicator = when {
-            accuracyPercentage >= 75 -> "High Accuracy"
-            accuracyPercentage >= 50 -> "Medium Accuracy"
-            accuracyPercentage >= 25 -> "Low Accuracy"
-            else -> "Very Low Accuracy (Approximate Only)"
-        }
-        
-        val locationText = "(${String.format("%.2f", position.x)}, ${String.format("%.2f", position.y)})"
-        val displayText = "$locationText - $accuracyIndicator ($accuracyPercentage%)"
-        
-        tvPositionInfo.text = displayText
-        updateMapWithMarkers()
+    // 위치 추정 성공 메시지
+    private fun showPositioningSuccess(position: PointF, accuracy: Int, apCount: Int) {
+        AlertDialog.Builder(this)
+            .setTitle("Position Determined")
+            .setMessage("Your estimated position:\n" +
+                    "X: ${String.format("%.3f", position.x)}\n" +
+                    "Y: ${String.format("%.3f", position.y)}\n\n" +
+                    "Confidence: $accuracy%\n" +
+                    "APs detected: $apCount\n\n" +
+                    "For better accuracy, collect more data points in nearby areas.")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun showPositioningFailed(networkCount: Int) {
@@ -654,6 +682,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        sensorFusionManager.unregisterSensors()
+        // sensorFusionManager.unregisterSensors()
     }
 }
