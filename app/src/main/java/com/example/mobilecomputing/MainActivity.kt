@@ -523,10 +523,11 @@ class MainActivity : AppCompatActivity() {
                         // UI 업데이트
                         val accuracyPercentage = (wifiPositioningResult.accuracyLevel * 100).roundToInt()
                         val accuracyIndicator = when {
-                            accuracyPercentage >= 75 -> "High Accuracy"
-                            accuracyPercentage >= 50 -> "Medium Accuracy"
-                            accuracyPercentage >= 25 -> "Low Accuracy"
-                            else -> "Low Accuracy"
+                            accuracyPercentage >= 80 -> "High Accuracy"
+                            accuracyPercentage >= 60 -> "Good Accuracy"
+                            accuracyPercentage >= 40 -> "Medium Accuracy"
+                            accuracyPercentage >= 20 -> "Low Accuracy"
+                            else -> "Very Low Accuracy"
                         }
                         
                         val locationText = "(${String.format("%.2f", finalPosition.x)}, ${String.format("%.2f", finalPosition.y)})"
