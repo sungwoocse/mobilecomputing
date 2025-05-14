@@ -2,6 +2,7 @@ package com.example.mobilecomputing
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -158,7 +159,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             if (text.isNotEmpty()) {
                 processUserInput(text)
             } else {
-                Toast.makeText(this, "유효한 모스 코드를 입력해주세요", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Please enter a valid Morse code", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -274,14 +275,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun navigateToTrainingMode() {
         // 트레이닝 모드 화면으로 이동
-        // TODO: 트레이닝 모드 구현
-        Toast.makeText(this, "트레이닝 모드는 현재 개발 중입니다", Toast.LENGTH_SHORT).show()
+        val intent = Intent(this, TrainingModeActivity::class.java)
+        startActivity(intent)
     }
 
     private fun navigateToSettings() {
         // 설정 화면으로 이동
-        // TODO: 설정 화면 구현
-        Toast.makeText(this, "설정 화면은 현재 개발 중입니다", Toast.LENGTH_SHORT).show()
+        val intent = Intent(this, SettingsActivity::class.java)
+        startActivity(intent)
     }
 
     override fun onResume() {

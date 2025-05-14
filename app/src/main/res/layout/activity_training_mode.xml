@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#F5F5F5"
+    tools:context=".TrainingModeActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/trainingBackButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Back"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Morse Code Training Mode"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+    </LinearLayout>
+
+    <!-- 훈련 모드 선택 버튼 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/practiceModeButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Practice Mode"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/challengeModeButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Challenge Mode"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <!-- 목표 단어 및 지침 영역 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:background="#FFFFFF"
+        android:layout_marginTop="16dp">
+
+        <TextView
+            android:id="@+id/trainingTargetText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:text="Word: "
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/trainingInstructionText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Select a mode to start training"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/trainingAccuracyText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Accuracy: 0%"
+            android:textSize="16sp"
+            android:textColor="#3F51B5"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+    <!-- 사용자 입력 표시 영역 -->
+    <TextView
+        android:id="@+id/trainingUserInputText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="#E8F5E9"
+        android:textSize="18sp"
+        android:padding="12dp"
+        android:minHeight="48dp"
+        android:hint="Converted text will be displayed here" />
+
+    <!-- 모스 부호 표시 영역 -->
+    <TextView
+        android:id="@+id/trainingCurrentMorseText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="#E0E0E0"
+        android:textSize="18sp"
+        android:padding="12dp"
+        android:minHeight="48dp"
+        android:fontFamily="monospace"
+        android:hint="Morse code will be displayed here" />
+
+    <!-- 제어 버튼 -->
+    <Button
+        android:id="@+id/trainingClearButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clear Input"
+        android:layout_marginTop="8dp" />
+
+    <!-- 모스 입력 영역 -->
+    <FrameLayout
+        android:id="@+id/trainingMorseInputArea"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="16dp"
+        android:background="#DDDDDD">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="Tap here to input Morse code"
+            android:textColor="#888888" />
+    </FrameLayout>
+
+    <!-- 도움말 텍스트 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="12sp"
+        android:gravity="center"
+        android:text="Short tap: dot(.), long tap: dash(-)" />
+
+</LinearLayout> 

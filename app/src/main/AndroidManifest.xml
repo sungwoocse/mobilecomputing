@@ -36,6 +36,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".TrainingModeActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- FileProvider 추가 -->
         <provider
             android:name="androidx.core.content.FileProvider"

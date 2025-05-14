@@ -11,7 +11,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="모스 부호 챗봇"
+        android:text="Morse Code Chatbot"
         android:textSize="24sp"
         android:textStyle="bold"
         android:gravity="center"
@@ -27,7 +27,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="훈련 모드"
+            android:text="Training Mode"
             android:layout_marginEnd="4dp" />
 
         <Button
@@ -35,7 +35,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="설정"
+            android:text="Settings"
             android:layout_marginStart="4dp" />
     </LinearLayout>
 
@@ -54,7 +54,7 @@
             android:layout_height="wrap_content"
             android:textSize="16sp"
             android:textColor="#333333"
-            android:hint="AI 응답이 여기에 표시됩니다"
+            android:hint="AI response will be displayed here"
             android:padding="8dp" />
     </ScrollView>
 
@@ -69,7 +69,7 @@
         android:layout_marginTop="16dp"
         android:layout_marginBottom="8dp"
         android:textSize="18sp"
-        android:hint="입력된 모스 부호가 여기에 표시됩니다" />
+        android:hint="Entered Morse code will be displayed here" />
 
     <!-- 입력 제어 버튼 영역 -->
     <LinearLayout
@@ -82,7 +82,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="지우기"
+            android:text="Clear"
             android:layout_marginEnd="4dp" />
 
         <Button
@@ -90,7 +90,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="전송"
+            android:text="Send"
             android:layout_marginStart="4dp" />
     </LinearLayout>
 
@@ -106,7 +106,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:text="여기를 터치하여 모스 부호 입력"
+            android:text="Tap here to input Morse code"
             android:textColor="#888888" />
             
     </FrameLayout>
@@ -118,6 +118,6 @@
         android:layout_marginTop="8dp"
         android:textSize="12sp"
         android:gravity="center"
-        android:text="짧게 터치: 점(.), 길게 터치: 대시(-)" />
+        android:text="Short tap: dot(.), long tap: dash(-)" />
 
 </LinearLayout>
