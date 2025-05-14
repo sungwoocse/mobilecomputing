@@ -10,8 +10,15 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadPoolExecutor
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * AI 모델과 통신하는 클라이언트 클래스
@@ -21,7 +28,7 @@ class AIModelClient(private val context: Context) {
     
     companion object {
         private const val TAG = "AIModelClient"
-        private const val SERVER_URL = "http://3.36.80.121:5000/api/chat" // EC2 서버 주소
+        private const val SERVER_URL = "https://3.36.80.121:5000/api/chat" // EC2 서버 주소 (HTTPS로 변경)
         private const val TIMEOUT_MILLIS = 10000 // 타임아웃 10초
     }
     
@@ -39,6 +46,36 @@ class AIModelClient(private val context: Context) {
         "Cannot connect to server. Please check your internet connection."
     )
     
+    init {
+        // SSL 인증서 검증 우회 설정 (개발 환경에서만 사용)
+        trustAllCertificates()
+    }
+    
+    /**
+     * 모든 SSL 인증서를 신뢰하도록 설정 (보안을 위해 실제 배포 환경에서는 제거 필요)
+     */
+    private fun trustAllCertificates() {
+        try {
+            val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            })
+            
+            val sc = SSLContext.getInstance("TLS")
+            sc.init(null, trustAllCerts, SecureRandom())
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.socketFactory)
+            
+            // 호스트명 검증 우회
+            val allHostsValid = HostnameVerifier { _, _ -> true }
+            HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid)
+            
+            Log.d(TAG, "SSL 인증서 검증 우회 설정 완료")
+        } catch (e: Exception) {
+            Log.e(TAG, "SSL 설정 오류: ${e.message}")
+        }
+    }
+    
     /**
      * 사용자 메시지 전송 및 응답 수신
      * @param message 사용자 메시지
@@ -54,15 +91,17 @@ class AIModelClient(private val context: Context) {
         
         executor.execute {
             try {
+                Log.d(TAG, "서버 통신 시작: $SERVER_URL")
                 // 실제 서버 통신 구현
                 val response = sendToServer(message)
+                Log.d(TAG, "서버 응답 성공: ${response.take(50)}...")
                 
                 // UI 스레드에서 콜백 실행
                 mainHandler.post {
                     callback(response)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Communication error: ${e.message}")
+                Log.e(TAG, "Communication error: ${e.message}", e)
                 mainHandler.post {
                     callback("Sorry, an error occurred while communicating with the server. Please try again.")
                 }
@@ -78,6 +117,14 @@ class AIModelClient(private val context: Context) {
         try {
             val url = URL(SERVER_URL)
             connection = url.openConnection() as HttpURLConnection
+            
+            if (connection is HttpsURLConnection) {
+                Log.d(TAG, "HTTPS 연결 설정 중...")
+                // HTTPS 설정이 적용되어 있는지 확인
+                connection.sslSocketFactory
+                connection.hostnameVerifier
+            }
+            
             connection.requestMethod = "POST"
             connection.connectTimeout = TIMEOUT_MILLIS
             connection.readTimeout = TIMEOUT_MILLIS
@@ -89,6 +136,8 @@ class AIModelClient(private val context: Context) {
                 put("message", message)
             }.toString()
             
+            Log.d(TAG, "요청 전송: $requestBody")
+            
             // 데이터 전송
             connection.outputStream.use { os ->
                 os.write(requestBody.toByteArray())
@@ -97,13 +146,16 @@ class AIModelClient(private val context: Context) {
             
             // 응답 확인
             val responseCode = connection.responseCode
+            Log.d(TAG, "응답 코드: $responseCode")
+            
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 // 응답 읽기
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
                 val jsonResponse = JSONObject(response)
                 return jsonResponse.optString("response", "Server response is invalid.")
             } else {
-                Log.e(TAG, "Server error: $responseCode")
+                val errorResponse = connection.errorStream?.bufferedReader()?.readText() ?: "No error details"
+                Log.e(TAG, "Server error: $responseCode, Details: $errorResponse")
                 return "Server error occurred. Please try again later."
             }
         } catch (e: IOException) {

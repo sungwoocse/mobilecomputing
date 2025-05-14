@@ -66,29 +66,29 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var aiModelClient: AIModelClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+            super.onCreate(savedInstanceState)
+            setContentView(R.layout.activity_main)
 
         // UI 초기화
         initializeUI()
-        
+
         // 센서 초기화
         initializeSensors()
         
         // 진동 초기화
         initializeVibrator()
-        
+            
         // 모스 코드 변환기 초기화
         morseConverter = MorseCodeConverter()
-        
+
         // AI 모델 클라이언트 초기화
         aiModelClient = AIModelClient(applicationContext)
         
         // 스케줄러 초기화
         scheduler = Executors.newScheduledThreadPool(1)
-        
+
         // 필요한 권한 요청
-        requestPermissions()
+            requestPermissions()
     }
 
     private fun initializeUI() {
@@ -123,8 +123,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         // 긴 터치 = 대시
                         currentInput.append("-")
                         vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
-                    }
-                    
+    }
+    
                     // 현재 입력 표시 업데이트
                     updateInputDisplay()
                     
@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 else -> false
             }
         }
-
+        
         // 클리어 버튼 리스너
         clearButton.setOnClickListener {
             currentInput.clear()
@@ -158,11 +158,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             
             if (text.isNotEmpty()) {
                 processUserInput(text)
-            } else {
+                } else {
                 Toast.makeText(this, "Please enter a valid Morse code", Toast.LENGTH_SHORT).show()
-            }
-        }
-
+                }
+    }
+    
         // 트레이닝 모드 버튼 리스너
         trainingModeButton.setOnClickListener {
             navigateToTrainingMode()
@@ -179,28 +179,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     }
-
+    
     private fun initializeVibrator() {
         vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
             vibratorManager.defaultVibrator
-        } else {
+            } else {
             @Suppress("DEPRECATION")
             getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
     }
 
     private fun requestPermissions() {
-        val permissions = arrayOf(
+            val permissions = arrayOf(
             Manifest.permission.VIBRATE,
             Manifest.permission.INTERNET,
             Manifest.permission.BODY_SENSORS
-        )
-        
+            )
+                
         val permissionsToRequest = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }.toTypedArray()
-        
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }.toTypedArray()
+            
         if (permissionsToRequest.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, permissionsToRequest, PERMISSION_REQUEST_CODE)
         }
@@ -249,9 +249,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     vibrationPatterns.add(wordPauseDuration)
                     vibrationAmplitudes.add(0)
                     continue
-                }
-            }
-            
+        }
+    }
+
             // 문자 사이 간격 (마지막 문자 제외)
             if (i < morseCode.length - 1 && morseCode[i+1] != ' ') {
                 vibrationPatterns.add(pauseDuration)
@@ -266,12 +266,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 -1 // 반복 없음
             )
             vibrator.vibrate(vibrationEffect)
-        } else {
+                    } else {
             // 이전 버전 지원
             @Suppress("DEPRECATION")
             vibrator.vibrate(500)
-        }
-    }
+                }
+            }
 
     private fun navigateToTrainingMode() {
         // 트레이닝 모드 화면으로 이동

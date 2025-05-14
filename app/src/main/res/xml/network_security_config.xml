@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 모든 도메인에 대한 cleartext 트래픽 허용 -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <!-- 시스템 기본 인증서 신뢰 -->
+            <certificates src="system" />
+            <!-- 사용자 추가 인증서 신뢰 (개발 및 테스트 환경용) -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- 특정 도메인에 대한 설정 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">3.36.80.121</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config> 
