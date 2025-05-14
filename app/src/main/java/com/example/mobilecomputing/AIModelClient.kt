@@ -21,7 +21,7 @@ class AIModelClient(private val context: Context) {
     
     companion object {
         private const val TAG = "AIModelClient"
-        private const val SERVER_URL = "https://your-cloud-server.com/api/chat" // 실제 서버 URL로 변경 필요
+        private const val SERVER_URL = "http://3.36.80.121:5000/api/chat" // EC2 서버 주소
         private const val TIMEOUT_MILLIS = 10000 // 타임아웃 10초
     }
     
@@ -33,10 +33,10 @@ class AIModelClient(private val context: Context) {
     
     // 오프라인 대응용 기본 응답
     private val fallbackResponses = arrayOf(
-        "인터넷 연결이 없습니다. 연결 상태를 확인해주세요.",
-        "현재 오프라인 상태입니다. 응답을 제공할 수 없습니다.",
-        "네트워크 연결이 필요합니다. 다시 시도해주세요.",
-        "서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요."
+        "Internet connection not available. Please check your connection.",
+        "You are currently offline. Cannot provide a response.",
+        "Network connection is required. Please try again later.",
+        "Cannot connect to server. Please check your internet connection."
     )
     
     /**
@@ -47,40 +47,31 @@ class AIModelClient(private val context: Context) {
     fun sendMessage(message: String, callback: (String) -> Unit) {
         // 네트워크 연결 확인
         if (!isNetworkConnected()) {
-            Log.e(TAG, "네트워크 연결 없음")
+            Log.e(TAG, "No network connection")
             callback(getFallbackResponse())
             return
         }
         
-        // 실제 구현에서는 서버와 통신 구현
-        // 현재는 목업 응답만 제공
-        
         executor.execute {
             try {
-                // 서버 통신 시뮬레이션 (실제 구현 필요)
-                Thread.sleep(500) // 통신 지연 시뮬레이션
-                
-                // 실제 서버 구현 시 주석 해제하여 사용
-                // val response = sendToServer(message)
-
-                // 현재는 가상 응답 사용 (서버 연동 시 제거)
-                val response = getMockResponse(message)
+                // 실제 서버 통신 구현
+                val response = sendToServer(message)
                 
                 // UI 스레드에서 콜백 실행
                 mainHandler.post {
                     callback(response)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "통신 오류: ${e.message}")
+                Log.e(TAG, "Communication error: ${e.message}")
                 mainHandler.post {
-                    callback("죄송합니다. 통신 중 오류가 발생했습니다. 다시 시도해주세요.")
+                    callback("Sorry, an error occurred while communicating with the server. Please try again.")
                 }
             }
         }
     }
     
     /**
-     * 실제 서버 통신 구현 (현재는 미사용)
+     * 실제 서버 통신 구현
      */
     private fun sendToServer(message: String): String {
         var connection: HttpURLConnection? = null
@@ -110,14 +101,14 @@ class AIModelClient(private val context: Context) {
                 // 응답 읽기
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
                 val jsonResponse = JSONObject(response)
-                return jsonResponse.optString("response", "서버 응답이 올바르지 않습니다.")
+                return jsonResponse.optString("response", "Server response is invalid.")
             } else {
-                Log.e(TAG, "서버 오류: $responseCode")
-                return "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+                Log.e(TAG, "Server error: $responseCode")
+                return "Server error occurred. Please try again later."
             }
         } catch (e: IOException) {
-            Log.e(TAG, "통신 실패", e)
-            return "네트워크 오류가 발생했습니다. 다시 시도해주세요."
+            Log.e(TAG, "Communication failed", e)
+            return "Network error occurred. Please try again."
         } finally {
             connection?.disconnect()
         }
@@ -151,18 +142,18 @@ class AIModelClient(private val context: Context) {
     }
     
     /**
-     * 목업 응답 생성 (실제 서버 연동 전까지 사용)
+     * 목업 응답 생성 (서버 연동 실패 시 백업용으로 유지)
      */
     private fun getMockResponse(message: String): String {
         // 간단한 키워드 기반 응답 (서버 연동 전 테스트용)
         return when {
-            message.contains("안녕") -> "안녕하세요! 무엇을 도와드릴까요?"
-            message.contains("이름") -> "저는 모스 코드 챗봇입니다."
-            message.contains("모스") -> "모스 부호는 짧은 신호와 긴 신호를 조합하여 문자를 표현하는 코드입니다."
-            message.contains("도움") -> "저는 모스 부호를 통해 대화할 수 있습니다. 점(.)과 대시(-)로 메시지를 입력하면 됩니다."
-            message.contains("기능") -> "저는 모스 부호 입력, 진동 출력, 텍스트 변환 등의 기능을 제공합니다."
-            message.contains("사용") -> "화면을 탭하여 모스 부호를 입력하세요. 짧게 탭하면 점(.), 길게 누르면 대시(-)가 입력됩니다."
-            else -> "입력하신 내용은 '$message'입니다. 더 자세한 질문을 해주시면 도움드리겠습니다."
+            message.contains("hello") -> "Hello! How can I help you with Morse code today?"
+            message.contains("name") -> "I am the Morse Code Chatbot."
+            message.contains("morse") -> "Morse code is a communication system that uses dots and dashes to represent letters and numbers."
+            message.contains("help") -> "I can help you communicate using Morse code. Input with dots(.) and dashes(-) to form messages."
+            message.contains("feature") -> "I provide Morse code input, vibration output, and text conversion features."
+            message.contains("use") -> "Tap the screen to input Morse code. Short tap for dot(.), long press for dash(-)."
+            else -> "You sent: '$message'. Please ask a more specific question about Morse code or how to use this app."
         }
     }
 } 

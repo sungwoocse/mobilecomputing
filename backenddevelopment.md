@@ -5,11 +5,10 @@
 
 ## 기술 스택
 - **서버**: AWS EC2
-- **언어**: Python 3.8+
-- **웹 프레임워크**: Flask 또는 FastAPI
+- **언어**: Python 3.12
 - **AI 모델**: Anthropic의 Claude 3.7 Sonnet
 - **통신 프로토콜**: HTTP/HTTPS (REST API)
-- **데이터베이스**: (선택사항) SQLite 또는 PostgreSQL
+- **데이터베이스**: S3, DynamoDB
 
 ## 시스템 아키텍처
 ```
@@ -44,20 +43,6 @@
   }
   ```
 
-### 2. (선택사항) `/api/history` 엔드포인트
-- **메소드**: GET
-- **기능**: 사용자 대화 기록 조회
-- **응답 형식**:
-  ```json
-  {
-    "history": [
-      {"role": "user", "content": "사용자 메시지1", "timestamp": "시간"},
-      {"role": "assistant", "content": "AI 응답1", "timestamp": "시간"},
-      ...
-    ],
-    "status": "success"
-  }
-  ```
 
 ## 백엔드 개발 단계
 
@@ -81,8 +66,6 @@ logger = logging.getLogger(__name__)
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-# 대화 이력 저장 (메모리에 저장하는 간단한 예시)
-conversations = {}
 ```
 
 ### 2. 채팅 API 엔드포인트 구현
@@ -134,24 +117,6 @@ def chat():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 ```
 
-### 3. 대화 이력 엔드포인트 (선택사항)
-```python
-@app.route('/api/history', methods=['GET'])
-def get_history():
-    try:
-        session_id = request.remote_addr
-        
-        if session_id not in conversations:
-            return jsonify({'status': 'success', 'history': []})
-        
-        return jsonify({
-            'status': 'success',
-            'history': conversations[session_id]
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in history endpoint: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
 ```
 
 ### 4. 서버 실행 코드
@@ -173,10 +138,6 @@ if __name__ == '__main__':
 # 필요한 패키지 설치
 sudo apt update
 sudo apt install -y python3-pip python3-venv
-
-# 가상환경 생성
-python3 -m venv venv
-source venv/bin/activate
 
 # 필요한 라이브러리 설치
 pip install flask flask-cors gunicorn anthropic requests
@@ -211,30 +172,7 @@ EnvironmentFile=/home/ubuntu/morse-chatbot/.env
 WantedBy=multi-user.target
 ```
 
-### NGINX 설정 (선택사항, SSL 지원)
-```
-server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$host$request_uri;
-}
 
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
 
 ## Claude 3.7 Sonnet 사용 가이드
 
@@ -332,18 +270,4 @@ sudo journalctl -u morse-chatbot.service -f
 ```
 
 ## 성능 최적화
-- API 응답 캐싱 (Redis 활용 가능)
-- 대화 컨텍스트 최적화 (토큰 제한을 고려해 최근 N개 메시지만 전송)
 - 비동기 요청 처리 (AsyncIO 또는 FastAPI 사용 고려)
-
-## 보안 권장사항
-- API 키 환경 변수로 관리
-- HTTPS 적용
-- 요청 비율 제한 설정
-- 입력 데이터 검증
-- IP 기반 세션 대신 토큰 기반 인증 구현 고려
-
-## 참고사항
-- Claude 3.7 API는 초당 요청 수 제한이 있으므로 대규모 사용자를 위한 큐 시스템 구현 고려
-- 앱의 오프라인 모드를 위한 fallback 응답은 유지
-- 로깅 및 모니터링을 통한 API 사용량 및 오류 추적 설정 
