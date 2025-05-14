@@ -6,211 +6,169 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.sqrt
 
-class SensorFusionManager(private val context: Context) {
-    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+/**
+ * 노크 패턴 감지 매니저
+ * 가속도계와 자이로스코프 센서를 이용하여 노크 패턴을 감지합니다.
+ */
+class KnockPatternDetector(private val context: Context) : SensorEventListener {
+    private val TAG = "KnockPatternDetector"
+    
+    // 센서 관련 변수
+    private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
-    private var magnetometer: Sensor? = null
     private var gyroscope: Sensor? = null
     
-    // 센서 데이터 저장
-    private var lastAccelerometer = FloatArray(3)
-    private var lastMagnetometer = FloatArray(3)
-    private var lastGyroscope = FloatArray(3)
+    // 노크 감지 변수
+    private var lastKnockTime: Long = 0
+    private val knockThreshold = 15.0f // 노크 감지 임계값
+    private val knockCooldown = 300L // 노크 감지 간 최소 간격 (밀리초)
     
-    // 방향 및 이동 관련 변수
-    private var orientation = FloatArray(3)
-    private var stepCount = 0
-    private var lastStepTime = 0L
-    private var stepLength = 0.7f // 평균 보폭 (미터)
+    // 노크 패턴 저장 변수
+    private val knockPattern = mutableListOf<Long>()
+    private val patternTimeout = 2000L // 패턴 인식 타임아웃 (밀리초)
     
-    // 필터링 상수
-    private val alpha = 0.8f // 가속도계 필터링 계수
-    private val beta = 0.1f  // 자이로스코프 필터링 계수
-    
-    // 현재 위치 추정
-    private var currentX = 0f
-    private var currentY = 0f
-    private var currentHeading = 0f
-    
-    // 센서 리스너
-    private val sensorEventListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) {
-            when (event.sensor.type) {
-                Sensor.TYPE_ACCELEROMETER -> {
-                    // 가속도계 데이터 필터링
-                    lastAccelerometer = lowPassFilter(lastAccelerometer, event.values, alpha)
-                    
-                    // 걸음 감지
-                    detectStep(lastAccelerometer)
-                }
-                Sensor.TYPE_MAGNETIC_FIELD -> {
-                    lastMagnetometer = lowPassFilter(lastMagnetometer, event.values, alpha)
-                    updateOrientation()
-                }
-                Sensor.TYPE_GYROSCOPE -> {
-                    lastGyroscope = lowPassFilter(lastGyroscope, event.values, beta)
-                    updateHeading()
-                }
-            }
-        }
-        
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-            // 정확도 변경 처리
-        }
+    // 콜백 인터페이스
+    interface OnKnockPatternDetectedListener {
+        fun onKnockPatternDetected(pattern: List<Long>)
     }
     
-    // 초기화
+    private var knockPatternListener: OnKnockPatternDetectedListener? = null
+    
+    /**
+     * 센서 초기화 및 등록
+     */
     fun initialize() {
-        try {
-            // 센서 인스턴스 가져오기
-            accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-            gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-            
-            // 센서 사용 가능성 검사
-            val isSensorAvailable = accelerometer != null && magnetometer != null
-            
-            if (isSensorAvailable) {
-                // 센서 등록
-                registerSensors()
-                
-                // 센서 데이터 초기화
-                lastAccelerometer = FloatArray(3)
-                lastMagnetometer = FloatArray(3)
-                lastGyroscope = FloatArray(3)
-                orientation = FloatArray(3)
-                
-                // 로그 기록
-                android.util.Log.d("SensorFusion", "Sensors initialized successfully")
-            } else {
-                // 로그 기록
-                android.util.Log.e("SensorFusion", "Required sensors not available on this device")
-            }
-        } catch (e: Exception) {
-            // 예외 처리
-            android.util.Log.e("SensorFusion", "Error initializing sensors: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-    
-    // 센서 등록
-    private fun registerSensors() {
-        accelerometer?.let {
-            sensorManager.registerListener(sensorEventListener, it, SensorManager.SENSOR_DELAY_GAME)
-        }
-        magnetometer?.let {
-            sensorManager.registerListener(sensorEventListener, it, SensorManager.SENSOR_DELAY_GAME)
-        }
-        gyroscope?.let {
-            sensorManager.registerListener(sensorEventListener, it, SensorManager.SENSOR_DELAY_GAME)
-        }
-    }
-    
-    // 센서 해제
-    fun unregisterSensors() {
-        sensorManager.unregisterListener(sensorEventListener)
-    }
-    
-    // 걸음 감지 알고리즘
-    private fun detectStep(acceleration: FloatArray) {
-        val magnitude = sqrt(
-            acceleration[0] * acceleration[0] +
-            acceleration[1] * acceleration[1] +
-            acceleration[2] * acceleration[2]
-        )
+        sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         
+        if (accelerometer == null) {
+            Log.e(TAG, "가속도계 센서를 사용할 수 없습니다")
+        }
+        
+        if (gyroscope == null) {
+            Log.e(TAG, "자이로스코프 센서를 사용할 수 없습니다")
+        }
+    }
+    
+    /**
+     * 센서 리스너 등록
+     */
+    fun registerSensors() {
+        accelerometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        
+        gyroscope?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+    }
+    
+    /**
+     * 센서 리스너 해제
+     */
+    fun unregisterSensors() {
+        sensorManager.unregisterListener(this)
+    }
+    
+    /**
+     * 노크 패턴 감지 리스너 설정
+     */
+    fun setOnKnockPatternDetectedListener(listener: OnKnockPatternDetectedListener) {
+        knockPatternListener = listener
+    }
+    
+    override fun onSensorChanged(event: SensorEvent) {
+        when (event.sensor.type) {
+            Sensor.TYPE_ACCELEROMETER -> processAccelerometerData(event)
+            Sensor.TYPE_GYROSCOPE -> processGyroscopeData(event)
+        }
+    }
+    
+    /**
+     * 가속도계 데이터 처리
+     */
+    private fun processAccelerometerData(event: SensorEvent) {
+        val x = event.values[0]
+        val y = event.values[1]
+        val z = event.values[2]
+        
+        // 가속도 크기 계산
+        val magnitude = sqrt(x*x + y*y + z*z)
+        
+        // 중력 가속도(약 9.81) 제거하여 순수 가속도 계산
+        val acceleration = abs(magnitude - SensorManager.GRAVITY_EARTH)
+        
+        // 현재 시간
         val currentTime = System.currentTimeMillis()
         
-        // 동적 임계값 시스템 구현
-        val minMagnitude = 10.0  // 최소 임계값
-        val maxMagnitude = 15.0  // 최대 임계값
-        
-        // 사용자 활동 상태에 따라 임계값 조정
-        val activityThreshold = when {
-            magnitude > 14.0 -> maxMagnitude  // 달리기 또는 빠른 걸음
-            magnitude > 12.0 -> 11.5          // 보통 걸음
-            else -> minMagnitude              // 느린 걸음 또는 정지
-        }
-        
-        // 시간 간격 - 빠른 걸음을 감지하기 위해 더 짧은 간격 허용
-        val timeThreshold = when {
-            magnitude > 14.0 -> 250L  // 빠른 걸음
-            magnitude > 12.0 -> 300L  // 보통 걸음
-            else -> 400L              // 느린 걸음
-        }
-        
-        // 걸음 감지 조건
-        if (magnitude > activityThreshold && currentTime - lastStepTime > timeThreshold) {
-            stepCount++
-            lastStepTime = currentTime
+        // 노크 감지 - 임계값을 넘고 이전 노크와 충분한 시간이 지나야 함
+        if (acceleration > knockThreshold && (currentTime - lastKnockTime) > knockCooldown) {
+            lastKnockTime = currentTime
+            Log.d(TAG, "노크 감지됨: $acceleration")
             
-            // 위치 업데이트
-            updatePosition()
+            // 첫 노크이거나 타임아웃 이후의 노크인 경우 패턴 초기화
+            if (knockPattern.isEmpty() || currentTime - knockPattern.last() > patternTimeout) {
+                knockPattern.clear()
+            }
             
-            // 디버깅용 로그 (개발자 모드에서만)
-            android.util.Log.d("SensorFusion", "Step detected: $stepCount, Magnitude: $magnitude")
+            // 노크 시간 추가
+            knockPattern.add(currentTime)
+            
+            // 노크 패턴 분석
+            analyzeKnockPattern()
         }
     }
     
-    // 방향 업데이트
-    private fun updateOrientation() {
-        val rotationMatrix = FloatArray(9)
-        val inclinationMatrix = FloatArray(9)
-        
-        if (SensorManager.getRotationMatrix(rotationMatrix, inclinationMatrix, 
-                lastAccelerometer, lastMagnetometer)) {
-            SensorManager.getOrientation(rotationMatrix, orientation)
-            currentHeading = Math.toDegrees(orientation[0].toDouble()).toFloat()
+    /**
+     * 자이로스코프 데이터 처리 (필요시 구현)
+     */
+    private fun processGyroscopeData(event: SensorEvent) {
+        // 현재는 가속도만으로 노크 감지
+    }
+    
+    /**
+     * 노크 패턴 분석
+     */
+    private fun analyzeKnockPattern() {
+        // 최소 3번의 노크로 패턴 인식
+        if (knockPattern.size >= 3) {
+            val pattern = calculateIntervals(knockPattern)
+            
+            // 특정 패턴 확인 (예: 짧게-짧게-길게)
+            if (isValidPattern(pattern)) {
+                Log.d(TAG, "유효한 노크 패턴 감지됨: $pattern")
+                knockPatternListener?.onKnockPatternDetected(pattern)
+                knockPattern.clear()
+            }
         }
     }
     
-    // 자이로스코프 기반 방향 업데이트
-    private fun updateHeading() {
-        val dt = 0.1f // 샘플링 시간 간격
-        currentHeading += lastGyroscope[2] * dt
-    }
-    
-    // 위치 업데이트
-    private fun updatePosition() {
-        val headingRad = Math.toRadians(currentHeading.toDouble())
-        currentX += (stepLength * sin(headingRad)).toFloat()
-        currentY += (stepLength * cos(headingRad)).toFloat()
-    }
-    
-    // 저역 통과 필터
-    private fun lowPassFilter(input: FloatArray, values: FloatArray, alpha: Float): FloatArray {
-        val output = FloatArray(3)
-        for (i in 0..2) {
-            output[i] = input[i] + alpha * (values[i] - input[i])
+    /**
+     * 노크 간 간격 계산
+     */
+    private fun calculateIntervals(timestamps: List<Long>): List<Long> {
+        val intervals = mutableListOf<Long>()
+        for (i in 1 until timestamps.size) {
+            intervals.add(timestamps[i] - timestamps[i-1])
         }
-        return output
+        return intervals
     }
     
-    // 현재 위치 및 방향 반환
-    fun getCurrentPosition(): Triple<Float, Float, Float> {
-        return Triple(currentX, currentY, currentHeading)
+    /**
+     * 패턴 유효성 확인
+     * 현재는 단순히 예시 패턴을 체크합니다.
+     */
+    private fun isValidPattern(intervals: List<Long>): Boolean {
+        // 예시: SOS 패턴 (짧게-짧게-짧게, 길게-길게-길게, 짧게-짧게-짧게)
+        // 실제 구현에서는 더 복잡한 패턴 매칭이 필요합니다.
+        return intervals.size >= 2
     }
     
-    // 걸음 수 반환
-    fun getStepCount(): Int {
-        return stepCount
-    }
-    
-    // 위치 초기화
-    fun resetPosition(x: Float, y: Float, initialHeading: Float = 0f) {
-        currentX = x
-        currentY = y
-        currentHeading = initialHeading
-        stepCount = 0
-        
-        // 로그 기록
-        android.util.Log.d("SensorFusion", "Position reset to ($x, $y, $initialHeading)")
-    }
-    
-    // 센서 가용성 확인
-    fun isSensorsAvailable(): Boolean {
-        return accelerometer != null && magnetometer != null
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // 필요시 정확도 변경 처리
     }
 } 
