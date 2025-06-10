@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
@@ -65,9 +66,15 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
     }
 
     private fun initializeComponents() {
-        // 패턴 데이터베이스 초기화
-        patternDatabase = UserInputPatternDatabase(this)
-        morseConverter = MorseCodeConverter(patternDatabase)
+        try {
+            // 패턴 데이터베이스 초기화
+            patternDatabase = UserInputPatternDatabase(this)
+            morseConverter = MorseCodeConverter(patternDatabase)
+        } catch (e: Exception) {
+            Log.e("PersonalizedTraining", "Error initializing components", e)
+            // 기본 모드로 폴백
+            morseConverter = MorseCodeConverter()
+        }
 
         // 진동 초기화  
         vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -114,17 +121,26 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
                     inputTimings.add(Pair(pressDuration, pauseDuration))
                     lastInputTime = inputEndTime
                     
-                    // dot/dash 분류 및 학습 데이터 저장
-                    val inputType = patternDatabase.classifyInput(pressDuration)
+                    // dot/dash 분류 및 학습 데이터 저장 (안전한 처리)
+                    val inputType = if (::patternDatabase.isInitialized) {
+                        patternDatabase.classifyInput(pressDuration)
+                    } else {
+                        if (pressDuration < 200) UserInputPatternDatabase.InputType.DOT else UserInputPatternDatabase.InputType.DASH
+                    }
+                    
                     when (inputType) {
                         UserInputPatternDatabase.InputType.DOT -> {
                             currentInput.append(".")
-                            patternDatabase.recordDotDuration(pressDuration)
+                            if (::patternDatabase.isInitialized) {
+                                patternDatabase.recordDotDuration(pressDuration)
+                            }
                             vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
                         }
                         UserInputPatternDatabase.InputType.DASH -> {
                             currentInput.append("-")
-                            patternDatabase.recordDashDuration(pressDuration)
+                            if (::patternDatabase.isInitialized) {
+                                patternDatabase.recordDashDuration(pressDuration)
+                            }
                             vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
                         }
                     }
@@ -136,7 +152,7 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
                         val now = System.currentTimeMillis()
                         if (now - lastInputTime > 1000) {
                             runOnUiThread {
-                                if (pauseDuration > 0) {
+                                if (pauseDuration > 0 && ::patternDatabase.isInitialized) {
                                     patternDatabase.recordCharSpaceDuration(pauseDuration)
                                 }
                                 currentInput.append(" ")
@@ -282,8 +298,10 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
     private fun completeTraining() {
         isTrainingActive = false
         
-        // 트레이닝 완료 플래그 설정
-        patternDatabase.setFirstRunCompleted()
+        // 트레이닝 완료 플래그 설정 (안전한 처리)
+        if (::patternDatabase.isInitialized) {
+            patternDatabase.setFirstRunCompleted()
+        }
         
         instructionText.text = "Training completed!\nYour personal Morse code patterns have been learned."
         targetWordText.text = "Training Progress: 100%"

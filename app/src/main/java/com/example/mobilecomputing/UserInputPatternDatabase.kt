@@ -56,54 +56,63 @@ class UserInputPatternDatabase(context: Context) {
      * 현재까지 학습된 패턴을 저장
      */
     private fun savePattern() {
-        val editor = prefs.edit()
-        
-        // 각 패턴의 평균값들을 저장
-        if (currentPattern.dotDurations.isNotEmpty()) {
-            val avgDot = currentPattern.dotDurations.average().toLong()
-            editor.putLong("avg_dot_duration", avgDot)
+        try {
+            val editor = prefs.edit()
+            
+            // 각 패턴의 평균값들을 저장
+            if (currentPattern.dotDurations.isNotEmpty()) {
+                val avgDot = currentPattern.dotDurations.average().toLong()
+                editor.putLong("avg_dot_duration", avgDot)
+            }
+            
+            if (currentPattern.dashDurations.isNotEmpty()) {
+                val avgDash = currentPattern.dashDurations.average().toLong()
+                editor.putLong("avg_dash_duration", avgDash)
+            }
+            
+            if (currentPattern.charSpaceDurations.isNotEmpty()) {
+                val avgCharSpace = currentPattern.charSpaceDurations.average().toLong()
+                editor.putLong("avg_char_space_duration", avgCharSpace)
+            }
+            
+            if (currentPattern.wordSpaceDurations.isNotEmpty()) {
+                val avgWordSpace = currentPattern.wordSpaceDurations.average().toLong()
+                editor.putLong("avg_word_space_duration", avgWordSpace)
+            }
+            
+            // 총 학습 횟수 저장
+            editor.putInt("total_dot_count", currentPattern.dotDurations.size)
+            editor.putInt("total_dash_count", currentPattern.dashDurations.size)
+            editor.putInt("total_char_space_count", currentPattern.charSpaceDurations.size)
+            editor.putInt("total_word_space_count", currentPattern.wordSpaceDurations.size)
+            
+            editor.apply()
+        } catch (e: Exception) {
+            // 저장 실패 시 무시 (다음 기회에 다시 시도)
         }
-        
-        if (currentPattern.dashDurations.isNotEmpty()) {
-            val avgDash = currentPattern.dashDurations.average().toLong()
-            editor.putLong("avg_dash_duration", avgDash)
-        }
-        
-        if (currentPattern.charSpaceDurations.isNotEmpty()) {
-            val avgCharSpace = currentPattern.charSpaceDurations.average().toLong()
-            editor.putLong("avg_char_space_duration", avgCharSpace)
-        }
-        
-        if (currentPattern.wordSpaceDurations.isNotEmpty()) {
-            val avgWordSpace = currentPattern.wordSpaceDurations.average().toLong()
-            editor.putLong("avg_word_space_duration", avgWordSpace)
-        }
-        
-        // 총 학습 횟수 저장
-        editor.putInt("total_dot_count", currentPattern.dotDurations.size)
-        editor.putInt("total_dash_count", currentPattern.dashDurations.size)
-        editor.putInt("total_char_space_count", currentPattern.charSpaceDurations.size)
-        editor.putInt("total_word_space_count", currentPattern.wordSpaceDurations.size)
-        
-        editor.apply()
     }
     
     /**
      * 저장된 패턴을 로드
      */
     private fun loadPattern() {
-        // 저장된 데이터가 있는지 확인하고 로드
-        val dotCount = prefs.getInt("total_dot_count", 0)
-        val dashCount = prefs.getInt("total_dash_count", 0)
-        
-        if (dotCount > 0 && dashCount > 0) {
-            // 기존 데이터가 있으면 평균값으로 초기화
-            val avgDot = prefs.getLong("avg_dot_duration", 150)
-            val avgDash = prefs.getLong("avg_dash_duration", 400)
+        try {
+            // 저장된 데이터가 있는지 확인하고 로드
+            val dotCount = prefs.getInt("total_dot_count", 0)
+            val dashCount = prefs.getInt("total_dash_count", 0)
             
-            // 기존 패턴으로 초기화 (평균값 기준)
-            repeat(dotCount.coerceAtMost(10)) { currentPattern.dotDurations.add(avgDot) }
-            repeat(dashCount.coerceAtMost(10)) { currentPattern.dashDurations.add(avgDash) }
+            if (dotCount > 0 && dashCount > 0) {
+                // 기존 데이터가 있으면 평균값으로 초기화
+                val avgDot = prefs.getLong("avg_dot_duration", 150)
+                val avgDash = prefs.getLong("avg_dash_duration", 400)
+                
+                // 기존 패턴으로 초기화 (평균값 기준)
+                repeat(dotCount.coerceAtMost(10)) { currentPattern.dotDurations.add(avgDot) }
+                repeat(dashCount.coerceAtMost(10)) { currentPattern.dashDurations.add(avgDash) }
+            }
+        } catch (e: Exception) {
+            // 로드 실패 시 기본값으로 초기화
+            currentPattern = InputPattern()
         }
     }
     
@@ -189,14 +198,22 @@ class UserInputPatternDatabase(context: Context) {
      * 첫 실행 여부 확인
      */
     fun isFirstRun(): Boolean {
-        return prefs.getBoolean("first_run", true)
+        return try {
+            prefs.getBoolean("first_run", true)
+        } catch (e: Exception) {
+            true // 오류 시 첫 실행으로 간주
+        }
     }
     
     /**
      * 첫 실행 플래그 설정
      */
     fun setFirstRunCompleted() {
-        prefs.edit().putBoolean("first_run", false).apply()
+        try {
+            prefs.edit().putBoolean("first_run", false).apply()
+        } catch (e: Exception) {
+            // 설정 실패 시 무시
+        }
     }
     
     /**
@@ -223,7 +240,12 @@ class UserInputPatternDatabase(context: Context) {
     }
     
     init {
-        loadPattern()
+        try {
+            loadPattern()
+        } catch (e: Exception) {
+            // 초기화 실패 시 기본값으로 진행
+            currentPattern = InputPattern()
+        }
     }
     
     enum class InputType {

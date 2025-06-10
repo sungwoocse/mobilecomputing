@@ -78,11 +78,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             patternDatabase = UserInputPatternDatabase(this)
             Log.d("MainActivity", "Pattern database initialized successfully")
             
-            // 첫 실행 시 개인화 트레이닝으로 이동 (아직 비활성화)
-            // if (patternDatabase.isFirstRun()) {
-            //     startPersonalizedTraining()
-            //     return
-            // }
+            // 첫 실행 시 개인화 트레이닝으로 이동
+            if (patternDatabase.isFirstRun()) {
+                Log.d("MainActivity", "First run detected, starting personalized training")
+                startPersonalizedTraining()
+                return
+            }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error initializing pattern database", e)
             // 패턴 데이터베이스 초기화 실패 시 기본 모드로 진행
