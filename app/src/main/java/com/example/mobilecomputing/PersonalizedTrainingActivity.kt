@@ -32,6 +32,7 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
     private lateinit var nextButton: Button
     private lateinit var skipButton: Button
     private lateinit var finishButton: Button
+    private lateinit var backButton: Button
 
     // 핵심 컴포넌트
     private lateinit var patternDatabase: UserInputPatternDatabase
@@ -103,6 +104,7 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
         nextButton = findViewById(R.id.personalizedNextButton)
         skipButton = findViewById(R.id.personalizedSkipButton)
         finishButton = findViewById(R.id.personalizedFinishButton)
+        backButton = findViewById(R.id.personalizedBackButton)
 
         // 모스 입력 영역 설정
         morseInputArea.setOnTouchListener { _, event ->
@@ -179,6 +181,11 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
 
         finishButton.setOnClickListener {
             finishTraining()
+        }
+
+        backButton.setOnClickListener {
+            // 메인 화면으로 돌아가기
+            finish()
         }
     }
 

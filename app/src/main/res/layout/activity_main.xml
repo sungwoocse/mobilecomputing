@@ -25,28 +25,30 @@
         <Button
             android:id="@+id/trainingButton"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="1"
-            android:text="Training Mode"
-            android:layout_marginEnd="2dp" />
+            android:text="Training"
+            android:textSize="14sp"
+            android:layout_marginEnd="4dp" />
 
         <Button
             android:id="@+id/personalTrainingButton"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="1"
-            android:text="Personal Training"
+            android:text="Personal"
+            android:textSize="14sp"
             android:layout_marginStart="2dp"
-            android:layout_marginEnd="2dp"
-            android:textSize="12sp" />
+            android:layout_marginEnd="2dp" />
 
         <Button
             android:id="@+id/settingsButton"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="1"
             android:text="Settings"
-            android:layout_marginStart="2dp" />
+            android:textSize="14sp"
+            android:layout_marginStart="4dp" />
     </LinearLayout>
 
     <!-- 응답 텍스트 영역 -->
