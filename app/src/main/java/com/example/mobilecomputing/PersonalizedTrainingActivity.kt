@@ -22,6 +22,7 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
     // UI 컴포넌트
     private lateinit var instructionText: TextView
     private lateinit var targetWordText: TextView
+    private lateinit var answerMorseText: TextView
     private lateinit var currentMorseText: TextView
     private lateinit var userInputText: TextView
     private lateinit var progressText: TextView
@@ -50,10 +51,9 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
     private val inputTimings = mutableListOf<Pair<Long, Long>>() // (press duration, pause duration)
     private val currentInput = StringBuilder()
 
-    // 트레이닝 단어 목록 (기본적인 패턴 학습용)
+    // 트레이닝 단어 목록 (10개로 축소 - 핵심 패턴 학습용)
     private val trainingWords = listOf(
-        "E", "T", "I", "A", "N", "M", "S", "U", "R", "W", "D", "K", "G", "O", "H", "V", "F", "L", "P", "J", "B", "X", "C", "Y", "Z", "Q",
-        "SOS", "OK", "HI", "AT", "SO", "DO", "GO", "ME", "WE", "NO", "ON", "UP", "IT", "TO", "BE", "OR", "IN", "AS", "OF", "IF", "IS"
+        "E", "T", "A", "I", "N", "M", "S", "O", "SOS", "HELP"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,6 +93,7 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
         // UI 컴포넌트 연결
         instructionText = findViewById(R.id.personalizedInstructionText)
         targetWordText = findViewById(R.id.personalizedTargetWordText)
+        answerMorseText = findViewById(R.id.personalizedAnswerMorseText)
         currentMorseText = findViewById(R.id.personalizedCurrentMorseText)
         userInputText = findViewById(R.id.personalizedUserInputText)
         progressText = findViewById(R.id.personalizedProgressText)
@@ -201,7 +202,8 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
         val morseCode = morseConverter.textToMorse(currentWord)
         
         targetWordText.text = "Word: $currentWord"
-        currentMorseText.text = "Morse: $morseCode"
+        answerMorseText.text = "Answer: $morseCode"
+        currentMorseText.text = "Your input: "
         userInputText.text = ""
         
         // 현재 단어의 모스코드를 진동으로 시연
@@ -305,6 +307,7 @@ class PersonalizedTrainingActivity : AppCompatActivity() {
         
         instructionText.text = "Training completed!\nYour personal Morse code patterns have been learned."
         targetWordText.text = "Training Progress: 100%"
+        answerMorseText.text = "🎉 Well done!"
         currentMorseText.text = "You can now use the main app with personalized settings."
         userInputText.text = ""
         

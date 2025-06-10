@@ -49,7 +49,7 @@
         android:id="@+id/personalizedWordProgressText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Word 1 of 26"
+        android:text="Word 1 of 10"
         android:textSize="14sp"
         android:textColor="#666666"
         android:gravity="center"
@@ -81,12 +81,27 @@
         android:layout_marginBottom="8dp"
         android:elevation="2dp" />
 
-    <!-- 모스코드 표시 -->
+    <!-- 정답 모스코드 표시 -->
+    <TextView
+        android:id="@+id/personalizedAnswerMorseText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Answer: ."
+        android:textSize="18sp"
+        android:textColor="#4CAF50"
+        android:gravity="center"
+        android:background="#E8F5E8"
+        android:padding="12dp"
+        android:layout_marginBottom="8dp"
+        android:elevation="2dp"
+        android:fontFamily="monospace" />
+
+    <!-- 사용자 입력 모스코드 표시 -->
     <TextView
         android:id="@+id/personalizedCurrentMorseText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Morse: ."
+        android:text="Your input: "
         android:textSize="18sp"
         android:textColor="#FF5722"
         android:gravity="center"

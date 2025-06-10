@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var morseCodeInputText: TextView
     private lateinit var morseCodeResponseText: TextView
     private lateinit var trainingModeButton: Button
+    private lateinit var personalTrainingButton: Button
     private lateinit var settingsButton: Button
     private lateinit var clearButton: Button
     private lateinit var submitButton: Button
@@ -78,12 +79,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             patternDatabase = UserInputPatternDatabase(this)
             Log.d("MainActivity", "Pattern database initialized successfully")
             
-            // 첫 실행 시 개인화 트레이닝으로 이동
-            if (patternDatabase.isFirstRun()) {
-                Log.d("MainActivity", "First run detected, starting personalized training")
-                startPersonalizedTraining()
-                return
-            }
+            // 첫 실행 시 개인화 트레이닝으로 이동 (안정성을 위해 비활성화)
+            // if (patternDatabase.isFirstRun()) {
+            //     Log.d("MainActivity", "First run detected, starting personalized training")
+            //     startPersonalizedTraining()
+            //     return
+            // }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error initializing pattern database", e)
             // 패턴 데이터베이스 초기화 실패 시 기본 모드로 진행
@@ -131,6 +132,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         morseCodeInputText = findViewById(R.id.inputText)
         morseCodeResponseText = findViewById(R.id.responseText)
         trainingModeButton = findViewById(R.id.trainingButton)
+        personalTrainingButton = findViewById(R.id.personalTrainingButton)
         settingsButton = findViewById(R.id.settingsButton)
         clearButton = findViewById(R.id.clearButton)
         submitButton = findViewById(R.id.submitButton)
@@ -231,10 +233,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             navigateToTrainingMode()
         }
         
-        // 개인화 트레이닝 모드 버튼 추가 (길게 눌러서 접근)
-        trainingModeButton.setOnLongClickListener {
+        // 개인화 트레이닝 버튼 리스너 (직접 버튼)
+        personalTrainingButton.setOnClickListener {
             navigateToPersonalizedTraining()
-            true
         }
 
         // 설정 버튼 리스너
