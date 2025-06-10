@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#f5f5f5">
+
+    <!-- 상단 제목 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Personal Morse Code Training"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:textColor="#333333"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- 진행률 표시 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
+
+        <ProgressBar
+            android:id="@+id/personalizedProgressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="100"
+            android:progress="0"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/personalizedProgressText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%"
+            android:textSize="16sp"
+            android:textColor="#666666" />
+
+    </LinearLayout>
+
+    <!-- 단어 진행 상태 -->
+    <TextView
+        android:id="@+id/personalizedWordProgressText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Word 1 of 26"
+        android:textSize="14sp"
+        android:textColor="#666666"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- 지시사항 -->
+    <TextView
+        android:id="@+id/personalizedInstructionText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Let's learn your personal Morse code patterns!"
+        android:textSize="16sp"
+        android:textColor="#444444"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- 목표 단어 표시 -->
+    <TextView
+        android:id="@+id/personalizedTargetWordText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Word: E"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#2196F3"
+        android:gravity="center"
+        android:background="#ffffff"
+        android:padding="12dp"
+        android:layout_marginBottom="8dp"
+        android:elevation="2dp" />
+
+    <!-- 모스코드 표시 -->
+    <TextView
+        android:id="@+id/personalizedCurrentMorseText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Morse: ."
+        android:textSize="18sp"
+        android:textColor="#FF5722"
+        android:gravity="center"
+        android:background="#ffffff"
+        android:padding="12dp"
+        android:layout_marginBottom="16dp"
+        android:elevation="2dp"
+        android:fontFamily="monospace" />
+
+    <!-- 모스 입력 영역 -->
+    <View
+        android:id="@+id/personalizedMorseInputArea"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:background="#4CAF50"
+        android:layout_marginBottom="8dp"
+        android:elevation="4dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Touch Area: Short press = dot (.), Long press = dash (-)"
+        android:textSize="12sp"
+        android:textColor="#666666"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- 사용자 입력 표시 -->
+    <TextView
+        android:id="@+id/personalizedUserInputText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Your input will appear here"
+        android:textSize="16sp"
+        android:textColor="#333333"
+        android:gravity="center"
+        android:background="#ffffff"
+        android:padding="12dp"
+        android:layout_marginBottom="16dp"
+        android:elevation="2dp"
+        android:fontFamily="monospace" />
+
+    <!-- 컨트롤 버튼들 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/personalizedSkipButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Skip"
+            android:textColor="#ffffff"
+            android:background="#FF9800"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/personalizedNextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Check"
+            android:textColor="#ffffff"
+            android:background="#4CAF50"
+            android:layout_marginStart="8dp" />
+
+        <Button
+            android:id="@+id/personalizedFinishButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Finish"
+            android:textColor="#ffffff"
+            android:background="#2196F3"
+            android:visibility="gone"
+            android:layout_marginStart="8dp" />
+
+    </LinearLayout>
+
+</LinearLayout> 

@@ -47,6 +47,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var inputEndTime: Long = 0
     private var currentInput = StringBuilder()
     private var lastTapTime: Long = 0
+    private val inputTimings = mutableListOf<Pair<Long, Long>>() // (press duration, pause duration)
 
     // 진동 관리자
     private lateinit var vibrator: Vibrator
@@ -64,10 +65,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     // AI 모델 클라이언트
     private lateinit var aiModelClient: AIModelClient
+    
+    // 사용자 입력 패턴 데이터베이스
+    private lateinit var patternDatabase: UserInputPatternDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
             setContentView(R.layout.activity_main)
+
+        // 패턴 데이터베이스 안전하게 초기화
+        try {
+            patternDatabase = UserInputPatternDatabase(this)
+            Log.d("MainActivity", "Pattern database initialized successfully")
+            
+            // 첫 실행 시 개인화 트레이닝으로 이동 (아직 비활성화)
+            // if (patternDatabase.isFirstRun()) {
+            //     startPersonalizedTraining()
+            //     return
+            // }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error initializing pattern database", e)
+            // 패턴 데이터베이스 초기화 실패 시 기본 모드로 진행
+        }
 
         // UI 초기화
         initializeUI()
@@ -78,8 +97,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         // 진동 초기화
         initializeVibrator()
             
-        // 모스 코드 변환기 초기화
-        morseConverter = MorseCodeConverter()
+        // 모스 코드 변환기 초기화 (패턴 데이터베이스 포함)
+        morseConverter = if (::patternDatabase.isInitialized) {
+            MorseCodeConverter(patternDatabase)
+        } else {
+            MorseCodeConverter()
+        }
 
         // AI 모델 클라이언트 초기화
         aiModelClient = AIModelClient(applicationContext)
@@ -89,6 +112,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         // 필요한 권한 요청
             requestPermissions()
+    }
+    
+    private fun startPersonalizedTraining() {
+        val intent = Intent(this, PersonalizedTrainingActivity::class.java)
+        startActivity(intent)
+        finish()
+    }
+    
+    private fun navigateToPersonalizedTraining() {
+        val intent = Intent(this, PersonalizedTrainingActivity::class.java)
+        startActivity(intent)
     }
 
     private fun initializeUI() {
@@ -106,34 +140,60 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 MotionEvent.ACTION_DOWN -> {
                     // 터치 시작 시간 기록
                     inputStartTime = System.currentTimeMillis()
-                    lastTapTime = inputStartTime
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     // 터치 종료 시간 기록 및 입력 처리
                     inputEndTime = System.currentTimeMillis()
                     val pressDuration = inputEndTime - inputStartTime
+                    val pauseDuration = if (lastTapTime > 0) inputStartTime - lastTapTime else 0L
                     
-                    // 점(dot) 또는 대시(dash) 결정
-                    if (pressDuration < 200) {
-                        // 짧은 터치 = 점
-                        currentInput.append(".")
-                        vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                    // 입력 타이밍 기록
+                    inputTimings.add(Pair(pressDuration, pauseDuration))
+                    
+                    // 개인화된 패턴으로 입력 분류 (안전한 처리)
+                    val inputType = if (::patternDatabase.isInitialized) {
+                        patternDatabase.classifyInput(pressDuration)
                     } else {
-                        // 긴 터치 = 대시
-                        currentInput.append("-")
-                        vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
-    }
-    
+                        if (pressDuration < 200) UserInputPatternDatabase.InputType.DOT else UserInputPatternDatabase.InputType.DASH
+                    }
+                    
+                    when (inputType) {
+                        UserInputPatternDatabase.InputType.DOT -> {
+                            currentInput.append(".")
+                            vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                        }
+                        UserInputPatternDatabase.InputType.DASH -> {
+                            currentInput.append("-")
+                            vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                        }
+                    }
+                    
+                    lastTapTime = inputEndTime
+                    
                     // 현재 입력 표시 업데이트
                     updateInputDisplay()
                     
-                    // 일정 시간 후 문자 구분 인식
+                    // 개선된 자동 간격 인식
                     scheduler.schedule({
-                        if (System.currentTimeMillis() - lastTapTime > 1000) {
-                            // 문자 구분 추가
+                        val now = System.currentTimeMillis()
+                        if (now - lastTapTime > 800) {
                             runOnUiThread {
-                                currentInput.append(" ")
+                                val timeSinceLastInput = now - lastTapTime
+                                val spaceType = if (::patternDatabase.isInitialized) {
+                                    patternDatabase.classifySpace(timeSinceLastInput)
+                                } else {
+                                    if (timeSinceLastInput < 1500) UserInputPatternDatabase.SpaceType.CHAR_SPACE else UserInputPatternDatabase.SpaceType.WORD_SPACE
+                                }
+                                
+                                when (spaceType) {
+                                    UserInputPatternDatabase.SpaceType.CHAR_SPACE -> {
+                                        currentInput.append(" ")
+                                    }
+                                    UserInputPatternDatabase.SpaceType.WORD_SPACE -> {
+                                        currentInput.append("  ")
+                                    }
+                                }
                                 updateInputDisplay()
                             }
                         }
@@ -148,6 +208,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         // 클리어 버튼 리스너
         clearButton.setOnClickListener {
             currentInput.clear()
+            inputTimings.clear()
+            lastTapTime = 0
             updateInputDisplay()
         }
 
@@ -166,6 +228,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         // 트레이닝 모드 버튼 리스너
         trainingModeButton.setOnClickListener {
             navigateToTrainingMode()
+        }
+        
+        // 개인화 트레이닝 모드 버튼 추가 (길게 눌러서 접근)
+        trainingModeButton.setOnLongClickListener {
+            navigateToPersonalizedTraining()
+            true
         }
 
         // 설정 버튼 리스너

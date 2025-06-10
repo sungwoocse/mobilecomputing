@@ -31,6 +31,9 @@ class TrainingModeActivity : AppCompatActivity() {
 
     // 모스 코드 변환기
     private lateinit var morseConverter: MorseCodeConverter
+    
+    // 사용자 입력 패턴 데이터베이스
+    private lateinit var patternDatabase: UserInputPatternDatabase
 
     // 진동 관리자
     private lateinit var vibrator: Vibrator
@@ -68,8 +71,11 @@ class TrainingModeActivity : AppCompatActivity() {
         // UI 초기화
         initializeUI()
 
-        // 모스 코드 변환기 초기화
-        morseConverter = MorseCodeConverter()
+        // 패턴 데이터베이스 초기화
+        patternDatabase = UserInputPatternDatabase(this)
+        
+        // 모스 코드 변환기 초기화 (패턴 데이터베이스 포함)
+        morseConverter = MorseCodeConverter(patternDatabase)
 
         // 진동 초기화
         initializeVibrator()
