@@ -284,14 +284,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         // 사용자 입력을 AI 모델로 전송하고 응답 받기
         aiModelClient.sendMessage(input) { response ->
             runOnUiThread {
-                // 응답 텍스트 표시
+                // 응답 텍스트 표시 (전체 응답)
                 morseCodeResponseText.text = response
                 
-                // 모스 코드로 변환하여 진동 출력
-                val morseResponse = morseConverter.textToMorse(response)
+                // 괄호 안 해석 부분 제거 후 진동 출력
+                val vibrationText = removeParenthesesContent(response)
+                val morseResponse = morseConverter.textToMorse(vibrationText)
                 playMorseVibration(morseResponse)
             }
         }
+    }
+    
+    /**
+     * 응답에서 괄호 안 내용을 제거하여 진동용 텍스트 추출
+     * @param response AI 응답 텍스트
+     * @return 괄호 안 내용이 제거된 텍스트
+     */
+    private fun removeParenthesesContent(response: String): String {
+        // 괄호와 그 안의 내용을 모두 제거
+        return response.replace(Regex("\\([^)]*\\)"), "").trim()
     }
 
     private fun playMorseVibration(morseCode: String) {
